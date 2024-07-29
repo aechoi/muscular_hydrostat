@@ -30,8 +30,6 @@ class HydrostatCell:
     base: bool = True
 
     def __post_init__(self):
-        self.pressure = 0  # internal pressure of cell [Pa]. Outward is positive
-
         self.dof_matrix = np.ones_like(self.vertices)
         if self.base:
             self.dof_matrix[0] = [0, 0]
@@ -78,31 +76,3 @@ class HydrostatCell:
             Return an Nx2 array of (x,y) acceleration components."""
         if dof_matrix is None:
             dof_matrix = self.dof_matrix
-
-    # def enforce_hydrostatic(self, actuation_dof: np.ndarray) -> np.ndarray:
-    #     """Given a set of vertices and degrees of freedom, calculate where
-    #     the free vertices must go in order to maintain constant volume"""
-
-    #     x = cp.Variable(shape=self.vertices.shape)  # coordinate locations
-    #     k = cp.Constant(1)  # muscle spring rate
-
-    #     energy = 0
-    #     for edge_index, (vertex_1, vertex_2) in enumerate(self.edges):
-    #         energy += (
-    #             k
-    #             / 2
-    #             * (
-    #                 cp.norm2(x[vertex_1] - x[vertex_2])
-    #                 - self.resting_edge_length[edge_index]
-    #             )
-    #             ** 2
-    #         )
-
-    #     objective = cp.Minimize(energy)
-    #     constraints = []
-    #     problem = cp.Problem(objective, constraints)
-
-    #     # solve the problem
-    #     problem.solve()
-
-    #     return x.value
