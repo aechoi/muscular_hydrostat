@@ -169,6 +169,8 @@ class NodeDrawer:
             if any(logger.ext_forces[frame] != 0):
                 dragging_node = np.where(logger.ext_forces[frame] != 0)[0][0]
                 force_vec = logger.ext_forces[frame][dragging_node : dragging_node + 2]
+                force_vec /= np.linalg.norm(force_vec)
+
                 ax.arrow(
                     *logger.pos[frame][dragging_node : dragging_node + 2],
                     *force_vec,
