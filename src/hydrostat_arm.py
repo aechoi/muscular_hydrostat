@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import numpy as np
 
+from data_logger import DataLogger
+
 
 @dataclass
 class HydrostatArm:
@@ -21,6 +23,7 @@ class HydrostatArm:
     dim: int = 2
 
     def __post_init__(self):
+        # Convert Mass and Damping parameters into matrix forms
         if self.masses is None:
             self.masses = np.ones(len(self.vertices))
         if self.dampers is None:
@@ -29,27 +32,22 @@ class HydrostatArm:
             self.dampers
         ):
             raise ValueError("Vertices, masses, and dampers must have the same length")
+        stateful_masses = np.column_stack((self.masses, self.masses)).ravel()
+        self.inv_mass_mat = np.linalg.inv(np.diag(stateful_masses))
+        stateful_dampers = np.column_stack((self.dampers, self.dampers)).ravel()
+        self.damping_mat = np.diag(stateful_dampers)
 
+        # Convert cell coordinates into one dimensional state vectors
         self.stateful_cells = np.empty(
             (len(self.cells), len(self.cells[0]) * self.dim), dtype=int
         )
         for idx in range(self.dim):
             self.stateful_cells[:, idx :: self.dim] = self.cells * self.dim + idx
 
-        if not self.dof_dict:
-            # Add in simply supported if no dof specified
-            self.dof_dict[0] = [0, 0]
-            self.dof_dict[1] = [1, 0]
-
         self.pos_init = np.ravel(self.vertices)
         self.vel_init = np.zeros_like(self.pos_init)
         self.pos = self.pos_init.copy()
         self.vel = self.vel_init.copy()
-
-        stateful_masses = np.column_stack((self.masses, self.masses)).ravel()
-        self.inv_mass_mat = np.linalg.inv(np.diag(stateful_masses))
-        stateful_dampers = np.column_stack((self.dampers, self.dampers)).ravel()
-        self.damping_mat = np.diag(stateful_dampers)
 
         # list of tuples for the purposes of drawing the network
         self.edges = []
@@ -63,8 +61,27 @@ class HydrostatArm:
         self.external_forces = np.zeros_like(self.pos)
         self.internal_forces = np.zeros_like(self.pos)
 
+        # Add in simply supported boundary conditions if no dof specified
+        if not self.dof_dict:
+            self.dof_dict[0] = [0, 0]
+            self.dof_dict[1] = [1, 0]
+
+        # Depending on degrees of freedom and the number of cells, these
+        # callable matrices change form.
         self.constraints, self.jacobian, self.jacobian_derivative = (
             self.construct_matrices()
+        )
+
+        self.timestamp = 0.0
+
+        self.logger = DataLogger(self.edges)
+        self.logger.log(
+            self.timestamp,
+            self.pos,
+            self.vel,
+            np.zeros_like(self.pos),
+            self.external_forces,
+            self.internal_forces,
         )
 
     def cell_volume(self, q):
@@ -74,13 +91,15 @@ class HydrostatArm:
         )
 
     def construct_matrices(self):
-        """Construct the constraint array.
+        """Construct the constraint array, jacobian matrix, and jacobian time
+        derivative.
 
         The elements of the constraint array change depending on boundary
         conditions and the number of cells. Instead of recalculating which
         need to be included every time, this method precalculates it once and
         then returns a constraint_array function which takes the position
-        states as input."""
+        states as input. The same is done for the jacobian and jacobian time
+        derivative."""
 
         boundary_constraints = []
         for vertex, dofs in self.dof_dict.items():
@@ -194,6 +213,7 @@ class HydrostatArm:
 
     def calc_next_states(self, dt):
         """Calculate the next state using the particular system parameters"""
+        self.timestamp += dt
         self.calc_internal_forces()
 
         jac = self.jacobian(self.pos)
@@ -214,7 +234,28 @@ class HydrostatArm:
         )
 
         self.pos = self.pos + self.vel * dt
-        self.vertices = self.pos.reshape(-1, 2)
         self.vel = self.vel + accel * dt
 
+        self.logger.log(
+            self.timestamp,
+            self.pos,
+            self.vel,
+            accel,
+            self.external_forces,
+            self.internal_forces,
+        )
+
         return self.pos, self.vel, accel
+
+    def save(self, filename: str = None):
+        """Save positions, velocities, accelerations, external forces, and internal forces."""
+        self.logger.save(filename)
+
+    @property
+    def pos(self):
+        return self._pos
+
+    @pos.setter
+    def pos(self, value):
+        self._pos = value
+        self.vertices = self._pos.reshape(-1, 2)

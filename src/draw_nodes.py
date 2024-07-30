@@ -1,8 +1,9 @@
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
-import time
 from matplotlib.animation import FuncAnimation
+
+from data_logger import DataLogger
 
 
 class NodeDrawer:
@@ -13,7 +14,6 @@ class NodeDrawer:
         structure: a cell or arm of multiple cells. Must have
             Attribute:  vertices - Nx2 np.ndarray of vertex positions
                         edges - list of tuples of vertex indices that form edges
-                        dof_matrix - NxD matrix of degrees of freedom for each vertex
 
             Methods:    apply_force(index, force vector) - apply an external force
                             to a particular vertex
@@ -37,24 +37,43 @@ class NodeDrawer:
         self.fig.canvas.mpl_connect("button_press_event", self.on_press)
         self.fig.canvas.mpl_connect("button_release_event", self.on_release)
         self.fig.canvas.mpl_connect("motion_notify_event", self.on_motion)
+        self.fig.canvas.mpl_connect("key_press_event", self.on_key_press)
 
-        self.dragging_node = None
-        self.force_vec = None
+        self.dragging_node = None  # vertex index that is being acted upon
+        self.force_vec = None  # array with force components
+        self.paused = False  # whether or not the animation/simulation is paused
+        self.end_animation = False  # whether the simulation has been ended
 
-        self.update_plot()
-
-        ani = FuncAnimation(
+        self.ani = FuncAnimation(
             self.fig,
             self.update_plot,
             frames=self.infinite_frames,
             interval=int(dt * 1000),
+            blit=True,
+            save_count=1000,
         )
 
     def infinite_frames(self):
         frame = 0
-        while True:
+        while not self.end_animation:
             yield frame
             frame += 1
+
+    def on_key_press(self, event):
+        if event.key == " ":
+            self.paused = not self.paused
+        if event.key == "q":
+            self.end_animation = True
+
+        if self.paused:
+            self.ani.event_source.stop()
+        else:
+            self.ani.event_source.start()
+
+        if self.end_animation:
+            self.ani.event_source.stop()
+            self.structure.save()
+            self.save_sim_rerun(self.structure.logger)
 
     def on_press(self, event):
         """Handler for mouse button press event."""
@@ -67,8 +86,9 @@ class NodeDrawer:
             np.linalg.norm(self.vertices - click_coord[None, :], axis=1)
         )
 
-    def on_release(self, event):
+    def on_release(self, _):
         """Handler for mouse button release event."""
+        self.structure.apply_external_force(self.dragging_node, force=np.array([0, 0]))
         self.dragging_node = None
         self.force_vec = None
 
@@ -76,20 +96,11 @@ class NodeDrawer:
         """Handler for mouse motion event."""
         if self.dragging_node is None:
             return
-        # x, y = event.xdata, event.ydata
-        # if x is None or y is None:
-        #     return
+        x, y = event.xdata, event.ydata
+        if x is None or y is None:
+            return
 
-        # updated_vertices = self.structure.move_vertex(
-        #     self.dragging_node, abs_coord=np.array([x, y])
-        # )
-        # self.vertices = updated_vertices
-        # for i, new_vertex in enumerate(updated_vertices):
-        #     self.pos[i] = tuple(new_vertex)
-        #     self.graph.nodes[i]["pos"] = tuple(new_vertex)
-        self.force_vec = (
-            np.array([event.xdata, event.ydata]) - self.vertices[self.dragging_node]
-        )
+        self.force_vec = np.array([x, y]) - self.vertices[self.dragging_node]
         self.force_vec /= np.linalg.norm(self.force_vec)
         self.structure.apply_external_force(
             self.dragging_node,
@@ -103,13 +114,16 @@ class NodeDrawer:
             self.pos[i] = tuple(new_vertex)
             self.graph.nodes[i]["pos"] = tuple(new_vertex)
 
-    def update_plot(self):
+    def update_plot(self, _):
         """Update the plot with new node positions."""
-        self.simulate()
         self.ax.clear()
-        nx.draw_networkx(
-            self.graph, self.pos, ax=self.ax, with_labels=False, node_size=10
-        )
+        self.simulate()
+        nx.draw(self.graph, self.pos, ax=self.ax, with_labels=False, node_size=10)
+        self.ax.set_axis_on()
+        self.ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+        self.ax.set_xlim([-5, 5])
+        self.ax.set_ylim([-1, 15])
+        self.ax.set_aspect("equal")
         if self.dragging_node is not None:
             self.ax.arrow(
                 *self.vertices[self.dragging_node],
@@ -119,9 +133,53 @@ class NodeDrawer:
                 fc="k",
                 ec="k",
             )
-        self.ax.set_axis_on()
-        self.ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
-        self.ax.set_xlim([-5, 5])
-        self.ax.set_ylim([-1, 15])
-        self.ax.set_aspect("equal")
-        return
+
+    def save_sim_rerun(self, logger=None, filename: str = None):
+        """Recreates a logged simulation and saves the animation."""
+        if (logger is None) == (filename is None):
+            raise ValueError("Either logger or filename must be provided, not both.")
+
+        if logger is None:
+            logger = DataLogger.load(filename)
+
+        if filename is None:
+            filename = "simulation.mp4"
+
+        fig, ax = plt.subplots()
+
+        graph = nx.Graph()
+        for i, vertex in enumerate(logger.pos[0].reshape(-1, 2)):
+            self.graph.add_node(i, pos=vertex)
+        graph.add_edges_from(logger.edges)
+        pos = nx.get_node_attributes(graph, "pos")
+
+        def update(frame):
+            ax.clear()
+            for i, new_vertex in enumerate(logger.pos[frame].reshape(-1, 2)):
+                pos[i] = tuple(new_vertex)
+                graph.nodes[i]["pos"] = tuple(new_vertex)
+
+            nx.draw(graph, pos, ax=ax, with_labels=False, node_size=10)
+            ax.set_axis_on()
+            ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+            ax.set_xlim([-5, 5])
+            ax.set_ylim([-1, 15])
+            ax.set_aspect("equal")
+
+            if any(logger.ext_forces[frame] != 0):
+                dragging_node = np.where(logger.ext_forces[frame] != 0)[0][0]
+                force_vec = logger.ext_forces[frame][dragging_node : dragging_node + 2]
+                ax.arrow(
+                    *logger.pos[frame][dragging_node : dragging_node + 2],
+                    *force_vec,
+                    head_width=0.1,
+                    head_length=0.1,
+                    fc="k",
+                    ec="k",
+                )
+
+        print("Beggining animation")
+        ani = FuncAnimation(
+            fig, update, frames=len(logger.timestamps), interval=self.dt * 1000
+        )
+        ani.save(filename)
