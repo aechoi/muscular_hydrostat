@@ -19,7 +19,7 @@ class NodeDrawer:
                             to a particular vertex
     """
 
-    def __init__(self, structure, dt=0.1):
+    def __init__(self, structure, dt=0.05):
         self.dt = dt
         self.structure = structure
         self.vertices = structure.vertices

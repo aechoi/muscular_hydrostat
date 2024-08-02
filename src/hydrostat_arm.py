@@ -30,7 +30,7 @@ class HydrostatArm:
         if self.masses is None:
             self.masses = np.ones(len(self.vertices)) / 2
         if self.dampers is None:
-            self.dampers = np.ones(len(self.vertices)) * 0.1
+            self.dampers = np.ones(len(self.vertices)) * 0.2
         if len(self.vertices) != len(self.masses) or len(self.vertices) != len(
             self.dampers
         ):
@@ -270,12 +270,14 @@ class HydrostatArm:
         scents_left = self.odor_func(*vertices_left.T)
         scents_right = self.odor_func(*vertices_right.T)
 
-        forward_backward_gradient = -(scents_left[0] + scents_right[0]) + (
-            scents_left[-1] + scents_right[-1]
+        forward_backward_gradient = (
+            (-(scents_left[0] + scents_right[0]) + (scents_left[-1] + scents_right[-1]))
+            / (scents_left[0] + scents_right[0] + scents_left[-1] + scents_right[-1])
+            * 1
         )
-        left_right_gradient = (scents_left[2] - scents_right[2]) / (
-            scents_left[2] + scents_right[2]
-        )
+        # left_right_gradient = (
+        #     (scents_left[2] - scents_right[2]) / (scents_left[2] + scents_right[2]) * 50
+        # )
 
         for cell_idx, (cell_left, cell_right) in enumerate(
             zip(self.cells[::2], self.cells[1::2])
@@ -286,22 +288,31 @@ class HydrostatArm:
             scents_left = self.odor_func(*vertices_left.T)
             scents_right = self.odor_func(*vertices_right.T)
 
-            combined_scent = scents_left[2] + scents_right[2]
-            self.muscles[self.cell_edge_map[2 * cell_idx][2]] = max(
-                0, (scents_left[2] - scents_right[2]) / combined_scent
+            left_right_gradient = (
+                (scents_left[2] - scents_right[2])
+                / (scents_left[2] + scents_right[2])
+                * 1
             )
-            self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = max(
-                0, (scents_right[2] - scents_left[2]) / combined_scent
-            )
-            # self.muscles[self.cell_edge_map[2 * cell_idx][2]] = left_right_gradient
-            # self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = -left_right_gradient
+            self.muscles[self.cell_edge_map[2 * cell_idx][2]] = left_right_gradient
+            # self.muscles[self.cell_edge_map[2 * cell_idx][1]] = left_right_gradient
+            self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = -left_right_gradient
+            self.muscles[self.cell_edge_map[2 * cell_idx + 1][0]] = -left_right_gradient
+
+            # self.muscles[self.cell_edge_map[2 * cell_idx][2]] = max(
+            #     0, (scents_left[2] - scents_right[2]) / (scents_left[2])
+            # )
+            # self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = max(
+            #     0, (scents_right[2] - scents_left[2]) / combined_scent
+            # )
+
             self.muscles[self.cell_edge_map[2 * cell_idx][0]] = (
                 forward_backward_gradient
             )
             self.muscles[self.cell_edge_map[2 * cell_idx + 1][1]] = (
                 forward_backward_gradient
             )
-        self.muscles *= 80
+        self.muscles *= 20
+        self.muscles = np.clip(self.muscles, -2, 50)
 
         # print(self.muscles)
 
