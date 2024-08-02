@@ -16,7 +16,8 @@ class HydrostatArm:
     cells: np.ndarray = field(default_factory=lambda: np.array([[0, 1, 2]], dtype=int))
 
     masses = None  # mass of vertices [kg]
-    dampers = None  # damping rate of edges [N-s/m]
+    dampers = None  # damping rate of substrate [N-s/m]
+    edge_damping_rate = 1  # damping rate of edges
 
     dof_dict = {}
 
@@ -27,9 +28,9 @@ class HydrostatArm:
     def __post_init__(self):
         # Convert Mass and Damping parameters into matrix forms
         if self.masses is None:
-            self.masses = np.ones(len(self.vertices))
+            self.masses = np.ones(len(self.vertices)) / 2
         if self.dampers is None:
-            self.dampers = np.ones(len(self.vertices))
+            self.dampers = np.ones(len(self.vertices)) * 0.1
         if len(self.vertices) != len(self.masses) or len(self.vertices) != len(
             self.dampers
         ):
@@ -286,32 +287,49 @@ class HydrostatArm:
             scents_right = self.odor_func(*vertices_right.T)
 
             combined_scent = scents_left[2] + scents_right[2]
-            # self.muscles[self.cell_edge_map[2 * cell_idx][2]] = (
-            #     (scents_left[2] - scents_right[2]) / combined_scent * 10
-            # )
-            # self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = (
-            #     (scents_right[2] - scents_left[2]) / combined_scent * 10
-            # )
             self.muscles[self.cell_edge_map[2 * cell_idx][2]] = max(
-                0, left_right_gradient
+                0, (scents_left[2] - scents_right[2]) / combined_scent
             )
             self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = max(
-                0, -left_right_gradient
+                0, (scents_right[2] - scents_left[2]) / combined_scent
             )
+            # self.muscles[self.cell_edge_map[2 * cell_idx][2]] = left_right_gradient
+            # self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = -left_right_gradient
             self.muscles[self.cell_edge_map[2 * cell_idx][0]] = (
                 forward_backward_gradient
             )
             self.muscles[self.cell_edge_map[2 * cell_idx + 1][1]] = (
                 forward_backward_gradient
             )
+        self.muscles *= 80
 
         # print(self.muscles)
+
+    def calc_edge_damping(self):
+        """Return a length n array of forces caused by linear damping in the
+        edges."""
+        edge_forces = np.zeros_like(self.vertices, dtype=float)
+        vertex_velocities = self.vel.reshape(-1, 2)
+        for edge in self.edges:
+            edge_vector = self.vertices[edge[0]] - self.vertices[edge[1]]
+            edge_unit_vector = edge_vector / np.linalg.norm(edge_vector)
+            relative_velocity = vertex_velocities[edge[0]] - vertex_velocities[edge[1]]
+            edge_velocity = (
+                np.dot(edge_unit_vector, relative_velocity) * edge_unit_vector
+            )
+            edge_damp_force = self.edge_damping_rate * edge_velocity
+
+            edge_forces[edge[0]] += edge_damp_force
+            edge_forces[edge[1]] += -edge_damp_force
+
+        return edge_forces.reshape(-1)
 
     def calc_next_states(self, dt):
         """Calculate the next state using the particular system parameters"""
         self.timestamp += dt
         self.control_muscles()
         self.calc_internal_forces()
+        edge_forces = self.calc_edge_damping()
 
         jac = self.jacobian(self.pos)
         djac = self.jacobian_derivative(self.pos, self.vel)
@@ -320,7 +338,9 @@ class HydrostatArm:
 
         lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (
             (jac @ self.inv_mass_mat @ self.damping_mat - djac) @ self.vel
-            - jac @ self.inv_mass_mat @ (self.external_forces + self.internal_forces)
+            - jac
+            @ self.inv_mass_mat
+            @ (self.external_forces + self.internal_forces - edge_forces)
             - ks * self.constraints(self.pos)
             - kd * jac @ self.vel
         )
@@ -332,6 +352,7 @@ class HydrostatArm:
             + self.internal_forces
             + reactions
             - self.damping_mat @ self.vel
+            - edge_forces
         )
 
         self.vel = self.vel + accel * dt
