@@ -22,6 +22,8 @@ class HydrostatArm:
 
     dim: int = 2
 
+    odor_func: callable = None
+
     def __post_init__(self):
         # Convert Mass and Damping parameters into matrix forms
         if self.masses is None:
@@ -49,13 +51,33 @@ class HydrostatArm:
         self.pos = self.pos_init.copy()
         self.vel = self.vel_init.copy()
 
-        # list of tuples for the purposes of drawing the network
+        # list of tuples for the purposes of drawing the network. In order
+        # for coloring to work, they must be sorted.
+        """
+        the cell_edge_map is needed because we need to know which muscles to
+        actuate in the closed loop control which is calculated per cell. That
+        way we don't need to search a bunch of times to find out which index
+        the edge is on.
+        Instead, we could use cell objects
+        """
+        self.cell_edge_map = []
         self.edges = []
         for cell in self.cells:
             for i, _ in enumerate(cell):
-                edge = (cell[i], cell[(i + 1) % 3])
+                vertex_indices = (cell[i], cell[(i + 1) % 3])
+                edge = (min(vertex_indices), max(vertex_indices))
                 if edge not in self.edges:
                     self.edges.append(edge)
+        self.edges = sorted(self.edges)
+
+        for cell in self.cells:
+            cell_edges = []
+            for i, _ in enumerate(cell):
+                vertex_indices = (cell[i], cell[(i + 1) % 3])
+                edge = (min(vertex_indices), max(vertex_indices))
+                cell_edges.append(self.edges.index(edge))
+            self.cell_edge_map.append(cell_edges)
+
         self.muscles = np.zeros(len(self.edges))
 
         self.external_forces = np.zeros_like(self.pos)
@@ -84,11 +106,11 @@ class HydrostatArm:
             self.internal_forces,
         )
 
+        self.errors = [[0] * len(self.cells)]
+
     def cell_volume(self, q):
         """Calculate the volume of a list of vectors"""
-        return 0.5 * np.abs(
-            (q[2] - q[0]) * (q[5] - q[1]) - (q[3] - q[1]) * (q[4] - q[0])
-        )
+        return 0.5 * ((q[2] - q[0]) * (q[5] - q[1]) - (q[3] - q[1]) * (q[4] - q[0]))
 
     def construct_matrices(self):
         """Construct the constraint array, jacobian matrix, and jacobian time
@@ -211,18 +233,97 @@ class HydrostatArm:
                 self.pos[edge[0] * 2 + 1] - self.pos[edge[1] * 2 + 1]
             )
 
+    def control_muscles(self):
+        """By probing the odor, determine how to actuate muscles"""
+        if self.odor_func is None:
+            return
+        self.muscles = self.muscles * 0
+        # for cell_idx, cell in enumerate(self.cells):
+        #     cell_vertices = self.vertices[cell]
+        #     scents = self.odor_func(*cell_vertices.T)
+        # gradient = (
+        #     np.linalg.inv(np.column_stack((cell_vertices, np.ones(3)))) @ scents
+        # )[:-1]
+        # gradient = gradient / np.linalg.norm(gradient)
+        # print(gradient)
+
+        # # wedge product of unit edge and unit grad is activation
+        # for edge_idx, (v1, v2) in enumerate(
+        #     zip(cell_vertices, np.roll(cell_vertices, -1, axis=0))
+        # ):
+        #     vector = v2 - v1
+        #     vector = vector / np.linalg.norm(vector)
+
+        #     ortho = np.abs(vector[0] * gradient[1] - vector[1] * gradient[0]) * 10
+        #     print(v1, v2, vector, ortho)
+        #     if self.muscles[self.cell_edge_map[cell_idx][edge_idx]] == 0:
+        #         self.muscles[self.cell_edge_map[cell_idx][edge_idx]] = ortho
+        #     else:
+        #         self.muscles[self.cell_edge_map[cell_idx][edge_idx]] = (
+        #             self.muscles[self.cell_edge_map[cell_idx][edge_idx]] + ortho
+        #         ) / 2
+        tip_left = self.cells[-2]
+        tip_right = self.cells[-1]
+        vertices_left = self.vertices[tip_left]
+        vertices_right = self.vertices[tip_right]
+        scents_left = self.odor_func(*vertices_left.T)
+        scents_right = self.odor_func(*vertices_right.T)
+
+        forward_backward_gradient = -(scents_left[0] + scents_right[0]) + (
+            scents_left[-1] + scents_right[-1]
+        )
+        left_right_gradient = (scents_left[2] - scents_right[2]) / (
+            scents_left[2] + scents_right[2]
+        )
+
+        for cell_idx, (cell_left, cell_right) in enumerate(
+            zip(self.cells[::2], self.cells[1::2])
+        ):
+            vertices_left = self.vertices[cell_left]
+            vertices_right = self.vertices[cell_right]
+
+            scents_left = self.odor_func(*vertices_left.T)
+            scents_right = self.odor_func(*vertices_right.T)
+
+            combined_scent = scents_left[2] + scents_right[2]
+            # self.muscles[self.cell_edge_map[2 * cell_idx][2]] = (
+            #     (scents_left[2] - scents_right[2]) / combined_scent * 10
+            # )
+            # self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = (
+            #     (scents_right[2] - scents_left[2]) / combined_scent * 10
+            # )
+            self.muscles[self.cell_edge_map[2 * cell_idx][2]] = max(
+                0, left_right_gradient
+            )
+            self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = max(
+                0, -left_right_gradient
+            )
+            self.muscles[self.cell_edge_map[2 * cell_idx][0]] = (
+                forward_backward_gradient
+            )
+            self.muscles[self.cell_edge_map[2 * cell_idx + 1][1]] = (
+                forward_backward_gradient
+            )
+
+        # print(self.muscles)
+
     def calc_next_states(self, dt):
         """Calculate the next state using the particular system parameters"""
         self.timestamp += dt
+        self.control_muscles()
         self.calc_internal_forces()
 
         jac = self.jacobian(self.pos)
         djac = self.jacobian_derivative(self.pos, self.vel)
+        ks = 10
+        kd = 1
 
         lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (
             (jac @ self.inv_mass_mat @ self.damping_mat - djac) @ self.vel
             - jac @ self.inv_mass_mat @ (self.external_forces + self.internal_forces)
-        )  # - ks * C(q) - kd * J @ dq)
+            - ks * self.constraints(self.pos)
+            - kd * jac @ self.vel
+        )
 
         reactions = jac.T @ lagrange_mult
 
@@ -233,8 +334,8 @@ class HydrostatArm:
             - self.damping_mat @ self.vel
         )
 
-        self.pos = self.pos + self.vel * dt
         self.vel = self.vel + accel * dt
+        self.pos = self.pos + self.vel * dt
 
         self.logger.log(
             self.timestamp,
@@ -243,6 +344,13 @@ class HydrostatArm:
             accel,
             self.external_forces,
             self.internal_forces,
+        )
+
+        self.errors.append(
+            [
+                self.cell_volume(self.pos[cell]) - self.cell_volume(self.pos_init[cell])
+                for cell in self.stateful_cells
+            ]
         )
 
         return self.pos, self.vel, accel

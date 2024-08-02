@@ -107,21 +107,27 @@ class NodeDrawer:
             force=self.force_vec * 2,
         )
 
-    def simulate(self):
+    def update_plot(self, _):
+        """Update the plot with new node positions."""
+        self.ax.clear()
+
         self.structure.calc_next_states(self.dt)
         self.vertices = self.structure.vertices
         for i, new_vertex in enumerate(self.vertices):
             self.pos[i] = tuple(new_vertex)
             self.graph.nodes[i]["pos"] = tuple(new_vertex)
 
-    def update_plot(self, _):
-        """Update the plot with new node positions."""
-        self.ax.clear()
-        self.simulate()
-        nx.draw(self.graph, self.pos, ax=self.ax, with_labels=False, node_size=10)
+        nx.draw(
+            self.graph,
+            self.pos,
+            ax=self.ax,
+            with_labels=False,
+            node_size=10,
+            edge_color=self.structure.muscles,
+        )
         self.ax.set_axis_on()
         self.ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
-        self.ax.set_xlim([-5, 5])
+        self.ax.set_xlim([-10, 10])
         self.ax.set_ylim([-1, 15])
         self.ax.set_aspect("equal")
         if self.dragging_node is not None:
@@ -134,7 +140,14 @@ class NodeDrawer:
                 ec="k",
             )
 
-    def save_sim_rerun(self, logger=None, filename: str = None):
+        if self.structure.odor_func is not None:
+            x = np.linspace(-10, 10, 100)
+            y = np.linspace(-1, 15, 100)
+            X, Y = np.meshgrid(x, y)
+            z = self.structure.odor_func(X, Y)
+            self.ax.contour(X, Y, z)
+
+    def save_sim_rerun(self, logger=None, filename=None):
         """Recreates a logged simulation and saves the animation."""
         if (logger is None) == (filename is None):
             raise ValueError("Either logger or filename must be provided, not both.")
@@ -159,10 +172,16 @@ class NodeDrawer:
                 pos[i] = tuple(new_vertex)
                 graph.nodes[i]["pos"] = tuple(new_vertex)
 
-            nx.draw(graph, pos, ax=ax, with_labels=False, node_size=10)
+            nx.draw(
+                graph,
+                pos,
+                ax=ax,
+                with_labels=False,
+                node_size=10,
+            )
             ax.set_axis_on()
             ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
-            ax.set_xlim([-5, 5])
+            ax.set_xlim([-10, 10])
             ax.set_ylim([-1, 15])
             ax.set_aspect("equal")
 
@@ -180,7 +199,7 @@ class NodeDrawer:
                     ec="k",
                 )
 
-        print("Beggining animation")
+        print("Beggining reanimation")
         ani = FuncAnimation(
             fig, update, frames=len(logger.timestamps), interval=self.dt * 1000
         )
