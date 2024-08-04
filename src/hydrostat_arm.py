@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -28,7 +26,7 @@ class HydrostatArm:
     def __post_init__(self):
         # Convert Mass and Damping parameters into matrix forms
         if self.masses is None:
-            self.masses = np.ones(len(self.vertices)) / 2
+            self.masses = np.ones(len(self.vertices)) * 1
         if self.dampers is None:
             self.dampers = np.ones(len(self.vertices)) * 0.2
         if len(self.vertices) != len(self.masses) or len(self.vertices) != len(
@@ -54,13 +52,11 @@ class HydrostatArm:
 
         # list of tuples for the purposes of drawing the network. In order
         # for coloring to work, they must be sorted.
-        """
-        the cell_edge_map is needed because we need to know which muscles to
-        actuate in the closed loop control which is calculated per cell. That
-        way we don't need to search a bunch of times to find out which index
-        the edge is on.
-        Instead, we could use cell objects
-        """
+        # the cell_edge_map is needed because we need to know which muscles to
+        # actuate in the closed loop control which is calculated per cell. That
+        # way we don't need to search a bunch of times to find out which index
+        # the edge is on.
+        # Instead, we could use cell objects
         self.cell_edge_map = []
         self.edges = []
         for cell in self.cells:
@@ -87,7 +83,7 @@ class HydrostatArm:
         # Add in simply supported boundary conditions if no dof specified
         if not self.dof_dict:
             self.dof_dict[0] = [0, 0]
-            self.dof_dict[1] = [1, 0]
+            self.dof_dict[1] = [0, 0]
 
         # Depending on degrees of freedom and the number of cells, these
         # callable matrices change form.
@@ -133,7 +129,7 @@ class HydrostatArm:
         def constraint_array(pos_states):
             constraint_array = []
             for idx in boundary_constraints:
-                constraint_array.append(pos_states[idx])
+                constraint_array.append(pos_states[idx] - self.pos_init[idx])
             for cell in self.stateful_cells:
                 constraint_array.append(
                     self.cell_volume(pos_states[cell])
@@ -275,9 +271,6 @@ class HydrostatArm:
             / (scents_left[0] + scents_right[0] + scents_left[-1] + scents_right[-1])
             * 1
         )
-        # left_right_gradient = (
-        #     (scents_left[2] - scents_right[2]) / (scents_left[2] + scents_right[2]) * 50
-        # )
 
         for cell_idx, (cell_left, cell_right) in enumerate(
             zip(self.cells[::2], self.cells[1::2])
@@ -294,16 +287,10 @@ class HydrostatArm:
                 * 1
             )
             self.muscles[self.cell_edge_map[2 * cell_idx][2]] = left_right_gradient
-            # self.muscles[self.cell_edge_map[2 * cell_idx][1]] = left_right_gradient
             self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = -left_right_gradient
-            self.muscles[self.cell_edge_map[2 * cell_idx + 1][0]] = -left_right_gradient
-
-            # self.muscles[self.cell_edge_map[2 * cell_idx][2]] = max(
-            #     0, (scents_left[2] - scents_right[2]) / (scents_left[2])
-            # )
-            # self.muscles[self.cell_edge_map[2 * cell_idx + 1][2]] = max(
-            #     0, (scents_right[2] - scents_left[2]) / combined_scent
-            # )
+            self.muscles[self.cell_edge_map[2 * cell_idx + 1][0]] = (
+                -left_right_gradient * 2
+            )
 
             self.muscles[self.cell_edge_map[2 * cell_idx][0]] = (
                 forward_backward_gradient
@@ -312,9 +299,7 @@ class HydrostatArm:
                 forward_backward_gradient
             )
         self.muscles *= 20
-        self.muscles = np.clip(self.muscles, -2, 50)
-
-        # print(self.muscles)
+        self.muscles = np.clip(self.muscles, 0, 50)
 
     def calc_edge_damping(self):
         """Return a length n array of forces caused by linear damping in the
@@ -344,7 +329,7 @@ class HydrostatArm:
 
         jac = self.jacobian(self.pos)
         djac = self.jacobian_derivative(self.pos, self.vel)
-        ks = 10
+        ks = 100
         kd = 1
 
         lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (

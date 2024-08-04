@@ -44,10 +44,12 @@ class NodeDrawer:
         self.paused = False  # whether or not the animation/simulation is paused
         self.end_animation = False  # whether the simulation has been ended
 
-        self.ani = FuncAnimation(
+        # Edit for Colab: 10s anim instead of infinite
+        self.anim = FuncAnimation(
             self.fig,
             self.update_plot,
-            frames=self.infinite_frames,
+            # frames=self.infinite_frames,
+            frames=int(10 / dt),
             interval=int(dt * 1000),
             blit=True,
             save_count=1000,
@@ -110,6 +112,7 @@ class NodeDrawer:
     def update_plot(self, _):
         """Update the plot with new node positions."""
         self.ax.clear()
+        (_,) = self.ax.plot(0, 0)
 
         self.structure.calc_next_states(self.dt)
         self.vertices = self.structure.vertices
@@ -146,6 +149,8 @@ class NodeDrawer:
             X, Y = np.meshgrid(x, y)
             z = self.structure.odor_func(X, Y)
             self.ax.contour(X, Y, z)
+
+        return (_,)
 
     def save_sim_rerun(self, logger=None, filename=None):
         """Recreates a logged simulation and saves the animation."""
