@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from matplotlib.animation import FuncAnimation
+import time
 
 from data_logger import DataLogger
 
@@ -19,9 +20,10 @@ class NodeDrawer:
                             to a particular vertex
     """
 
-    def __init__(self, structure, dt=0.05):
-        self.dt = dt
+    def __init__(self, structure, dt=0.05, colab=False):
         self.structure = structure
+        self.dt = dt
+        self.colab = colab
         self.vertices = structure.vertices
         self.edges = structure.edges
 
@@ -44,10 +46,15 @@ class NodeDrawer:
         self.paused = False  # whether or not the animation/simulation is paused
         self.end_animation = False  # whether the simulation has been ended
 
+        frames = self.infinite_frames
+        if colab:
+            frames = int(10 / dt)  # Colab Edit: 10s anim instead of infinite
+
+        self.last_time = time.time()
         self.ani = FuncAnimation(
             self.fig,
             self.update_plot,
-            frames=self.infinite_frames,
+            frames=frames,
             interval=int(dt * 1000),
             blit=True,
             save_count=1000,
@@ -111,6 +118,13 @@ class NodeDrawer:
         """Update the plot with new node positions."""
         self.ax.clear()
 
+        # FPS
+        current_time = time.time()
+        fps = self.ax.text(
+            0, -0.75, f"Sim FPS: {1/(current_time - self.last_time):.0f}"
+        )
+        self.last_time = current_time
+
         self.structure.calc_next_states(self.dt)
         self.vertices = self.structure.vertices
         for i, new_vertex in enumerate(self.vertices):
@@ -146,6 +160,8 @@ class NodeDrawer:
             X, Y = np.meshgrid(x, y)
             z = self.structure.odor_func(X, Y)
             self.ax.contour(X, Y, z)
+
+        return (fps,)
 
     def save_sim_rerun(self, logger=None, filename=None):
         """Recreates a logged simulation and saves the animation."""
