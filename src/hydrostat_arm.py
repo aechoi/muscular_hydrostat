@@ -22,6 +22,7 @@ class HydrostatArm:
     dim: int = 2
 
     odor_func: callable = None
+    obstacles = []
 
     def __post_init__(self):
         # Convert Mass and Damping parameters into matrix forms
@@ -128,13 +129,22 @@ class HydrostatArm:
 
         def constraint_array(pos_states):
             constraint_array = []
+
             for idx in boundary_constraints:
                 constraint_array.append(pos_states[idx] - self.pos_init[idx])
+
             for cell in self.stateful_cells:
                 constraint_array.append(
                     self.cell_volume(pos_states[cell])
                     - self.cell_volume(self.pos_init[cell])
                 )
+
+            for obstacle in self.obstacles:
+                for vertex in self.vertices:
+                    if obstacle.check_intersection(vertex):
+                        nearest_point = obstacle.nearest_point(vertex)
+                        constraint_array.append(vertex[0] - nearest_point[0])
+                        constraint_array.append(vertex[1] - nearest_point[1])
             return np.array(constraint_array)
 
         def jacobian(pos_states):
@@ -166,6 +176,14 @@ class HydrostatArm:
                     pos_states[cell[2]] - pos_states[cell[0]]
                 )
                 current_constraint += 1
+
+            for obstacle in self.obstacles:
+                for v_idx, vertex in enumerate(self.vertices):
+                    if obstacle.check_intersection(vertex):
+                        jacobian_mat[current_constraint, 2 * v_idx] = 1
+                        jacobian_mat[current_constraint + 1, 2 * v_idx + 1] = 1
+                        current_constraint += 2
+
             return jacobian_mat
 
         def jacobian_derivative(pos_states, vel_states):
@@ -194,9 +212,14 @@ class HydrostatArm:
                     vel_states[cell[2]] - vel_states[cell[0]]
                 )
                 current_constraint += 1
+
             return jacobian_derivative_mat
 
         return constraint_array, jacobian, jacobian_derivative
+
+    def add_obstacle(self, obstacle):
+        """Add an obstacle that the arm may interact with"""
+        self.obstacles.append(obstacle)
 
     def apply_external_force(self, vertex_idx, force=(0, 0)):
         """Set the external force for a particular vertex"""
@@ -330,7 +353,7 @@ class HydrostatArm:
         jac = self.jacobian(self.pos)
         djac = self.jacobian_derivative(self.pos, self.vel)
         ks = 100
-        kd = 1
+        kd = 10
 
         lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (
             (jac @ self.inv_mass_mat @ self.damping_mat - djac) @ self.vel

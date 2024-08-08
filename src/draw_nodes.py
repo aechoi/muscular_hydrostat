@@ -161,6 +161,9 @@ class NodeDrawer:
             z = self.structure.odor_func(X, Y)
             self.ax.contour(X, Y, z)
 
+        for obst in self.structure.obstacles:
+            self.ax.plot(obst.vertices[:, 0], obst.vertices[:, 1])
+
         return (fps,)
 
     def save_sim_rerun(self, logger=None, filename=None):
