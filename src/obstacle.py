@@ -20,7 +20,10 @@ class ConvexObstacle:
             vertices: an nx2 np.ndarray where n is the number of vertices. The
                 points must be in counter-clockwise order and form a convex set.
         """
-        self.vertices = np.vstack([vertices, vertices[0]])
+        self.vertices = vertices
+        if len(vertices) > 2:
+            self.vertices = np.vstack([vertices, vertices[0]])
+
         self.normal_matrix = np.array(
             [
                 [v1[1] - v2[1], v2[0] - v1[0]]
@@ -65,19 +68,19 @@ class ConvexObstacle:
         Return:
             Returns another length 2 np.array that has the x,y coordinate of
             the closest point."""
-        # closest_point = cp.Variable(2)
-        # objective = cp.Minimize(cp.sum_squares(closest_point - point))
-        # constraints = [
-        #     row @ (closest_point - vertex) == 0
-        #     for vertex, row in zip(self.vertices[:-1], self.normal_matrix)
-        # ]
-        # prob = cp.Problem(objective, constraints)
-        # prob.solve()
-        # return closest_point.value
         distances = np.diag(
             self.normal_matrix @ (point[:, None] - self.vertices[:-1].T)
         )
         if np.any(distances < 0):
             raise ValueError("Point is outside the polygon.")
+            # closest_point = cp.Variable(2)
+            # objective = cp.Minimize(cp.sum_squares(closest_point - point))
+            # constraints = [
+            #     row @ (closest_point - vertex) == 0
+            #     for vertex, row in zip(self.vertices[:-1], self.normal_matrix)
+            # ]
+            # prob = cp.Problem(objective, constraints)
+            # prob.solve()
+            # return closest_point.value
         nearest_idx = np.argmin(distances)
         return point - self.normal_matrix[nearest_idx] * distances[nearest_idx]

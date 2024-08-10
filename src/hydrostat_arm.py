@@ -352,7 +352,7 @@ class HydrostatArm:
 
         jac = self.jacobian(self.pos)
         djac = self.jacobian_derivative(self.pos, self.vel)
-        ks = 100
+        ks = 500
         kd = 10
 
         lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (

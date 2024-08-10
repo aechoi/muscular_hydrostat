@@ -20,7 +20,7 @@ class NodeDrawer:
                             to a particular vertex
     """
 
-    def __init__(self, structure, dt=0.05, colab=False):
+    def __init__(self, structure, dt=0.02, colab=False):
         self.structure = structure
         self.dt = dt
         self.colab = colab
@@ -116,16 +116,13 @@ class NodeDrawer:
 
     def update_plot(self, _):
         """Update the plot with new node positions."""
-        self.ax.clear()
 
-        # FPS
-        current_time = time.time()
-        fps = self.ax.text(
-            0, -0.75, f"Sim FPS: {1/(current_time - self.last_time):.0f}"
-        )
-        self.last_time = current_time
-
+        sim_start = time.perf_counter()
         self.structure.calc_next_states(self.dt)
+        sim_end = time.perf_counter()
+
+        draw_start = time.perf_counter()
+        self.ax.clear()
         self.vertices = self.structure.vertices
         for i, new_vertex in enumerate(self.vertices):
             self.pos[i] = tuple(new_vertex)
@@ -163,6 +160,17 @@ class NodeDrawer:
 
         for obst in self.structure.obstacles:
             self.ax.plot(obst.vertices[:, 0], obst.vertices[:, 1])
+        draw_end = time.perf_counter()
+
+        self.ax.text(-9, 0.25, f"Sim Time (ms): {(sim_end - sim_start)*1000:.0f}")
+        self.ax.text(-9, 1, f"Draw Time (ms): {(draw_end - draw_start)*1000:.0f}")
+
+        # FPS
+        current_time = time.perf_counter()
+        fps = self.ax.text(
+            -9, -0.75, f"Total FPS: {1/(current_time - self.last_time):.0f}"
+        )
+        self.last_time = current_time
 
         return (fps,)
 
