@@ -1,4 +1,3 @@
-import cvxpy as cp
 import numpy as np
 
 
@@ -83,4 +82,8 @@ class ConvexObstacle:
             # prob.solve()
             # return closest_point.value
         nearest_idx = np.argmin(distances)
-        return point - self.normal_matrix[nearest_idx] * distances[nearest_idx]
+        buffer_factor = 1.1  # ensures that the point is pushed out of the wall instead of asymptotically approaching edge.
+        return (
+            point
+            - self.normal_matrix[nearest_idx] * distances[nearest_idx] * buffer_factor
+        )
