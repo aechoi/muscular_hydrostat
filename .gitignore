@@ -2,3 +2,4 @@ venv/
 *.py[cod]
 *.npz
 *.mp4
+.vscode
