@@ -13,11 +13,11 @@ class HydrostatArm:
     )
     cells: np.ndarray = field(default_factory=lambda: np.array([[0, 1, 2]], dtype=int))
 
+    dof_dict: dict = field(default_factory=lambda: {})
+
     masses = None  # mass of vertices [kg]
     dampers = None  # damping rate of substrate [N-s/m]
     edge_damping_rate = 1  # damping rate of edges
-
-    dof_dict = {}
 
     dim: int = 2
 
@@ -47,9 +47,11 @@ class HydrostatArm:
             self.stateful_cells[:, idx :: self.dim] = self.cells * self.dim + idx
 
         self.pos_init = np.ravel(self.vertices)
+        self.vertices_init = self.vertices.copy()
         self.vel_init = np.zeros_like(self.pos_init)
-        self.pos = self.pos_init.copy()
-        self.vel = self.vel_init.copy()
+        self.pos = self.pos_init.copy()  # stateful position
+        self.vel = self.vel_init.copy()  # stateful velocity
+        self.velocities = np.zeros_like(self.vertices)
 
         # list of tuples for the purposes of drawing the network. In order
         # for coloring to work, they must be sorted.
@@ -81,16 +83,15 @@ class HydrostatArm:
         self.external_forces = np.zeros_like(self.pos)
         self.internal_forces = np.zeros_like(self.pos)
 
-        # Add in simply supported boundary conditions if no dof specified
+        # fix first two vertices if no dof specified
         if not self.dof_dict:
             self.dof_dict[0] = [0, 0]
             self.dof_dict[1] = [0, 0]
-
-        # Depending on degrees of freedom and the number of cells, these
-        # callable matrices change form.
-        self.constraints, self.jacobian, self.jacobian_derivative = (
-            self.construct_matrices()
-        )
+        self.boundary_indices = []
+        for vertex, dofs in self.dof_dict.items():
+            for i, dof in enumerate(dofs):
+                if dof == 0:
+                    self.boundary_indices.append(2 * vertex + i)
 
         self.timestamp = 0.0
 
@@ -106,116 +107,98 @@ class HydrostatArm:
 
         self.errors = [[0] * len(self.cells)]
 
-    def cell_volume(self, q):
-        """Calculate the volume of a list of vectors"""
-        return 0.5 * ((q[2] - q[0]) * (q[5] - q[1]) - (q[3] - q[1]) * (q[4] - q[0]))
+    def cell_volume(self, vertices):
+        """Calculate the signed volume of an nxd array"""
+        rolled_vertices = np.roll(vertices, -1, axis=0)
+        return 0.5 * np.sum(-np.diff(vertices * rolled_vertices[:, ::-1], axis=1))
+        # return 0.5 * (
+        #     (vertices[1, 0] - vertices[0, 0]) * (vertices[2, 1] - vertices[0, 1])
+        #     - ((vertices[1, 1] - vertices[0, 1]) * (vertices[2, 0] - vertices[0, 0]))
+        # )
 
-    def construct_matrices(self):
-        """Construct the constraint array, jacobian matrix, and jacobian time
-        derivative.
+    def constraints(self):
+        constraints_array = []
+        for idx in self.boundary_indices:
+            constraints_array.append(self.pos[idx] - self.pos_init[idx])
 
-        The elements of the constraint array change depending on boundary
-        conditions and the number of cells. Instead of recalculating which
-        need to be included every time, this method precalculates it once and
-        then returns a constraint_array function which takes the position
-        states as input. The same is done for the jacobian and jacobian time
-        derivative."""
-
-        boundary_constraints = []
-        for vertex, dofs in self.dof_dict.items():
-            for i, dof in enumerate(dofs):
-                if dof == 0:
-                    boundary_constraints.append(2 * vertex + i)
-
-        def constraint_array(pos_states):
-            constraint_array = []
-
-            for idx in boundary_constraints:
-                constraint_array.append(pos_states[idx] - self.pos_init[idx])
-
-            for cell in self.stateful_cells:
-                constraint_array.append(
-                    self.cell_volume(pos_states[cell])
-                    - self.cell_volume(self.pos_init[cell])
-                )
-
-            for obstacle in self.obstacles:
-                for vertex in self.vertices:
-                    if obstacle.check_intersection(vertex):
-                        nearest_point = obstacle.nearest_point(vertex)
-                        constraint_array.append(vertex[0] - nearest_point[0])
-                        constraint_array.append(vertex[1] - nearest_point[1])
-            return np.array(constraint_array)
-
-        def jacobian(pos_states):
-            jacobian_mat = np.zeros(
-                (len(constraint_array(pos_states)), len(pos_states))
+        for cell in self.cells:
+            constraints_array.append(
+                self.cell_volume(self.vertices[cell])
+                - self.cell_volume(self.vertices_init[cell])
             )
-            current_constraint = 0
-            for idx in boundary_constraints:
-                jacobian_mat[current_constraint, idx] = 1
-                current_constraint += 1
 
-            for cell in self.stateful_cells:
-                jacobian_mat[current_constraint, cell[0]] = 0.5 * (
-                    pos_states[cell[3]] - pos_states[cell[5]]
-                )
-                jacobian_mat[current_constraint, cell[1]] = 0.5 * (
-                    pos_states[cell[4]] - pos_states[cell[2]]
-                )
-                jacobian_mat[current_constraint, cell[2]] = 0.5 * (
-                    pos_states[cell[5]] - pos_states[cell[1]]
-                )
-                jacobian_mat[current_constraint, cell[3]] = 0.5 * (
-                    pos_states[cell[0]] - pos_states[cell[4]]
-                )
-                jacobian_mat[current_constraint, cell[4]] = 0.5 * (
-                    pos_states[cell[1]] - pos_states[cell[3]]
-                )
-                jacobian_mat[current_constraint, cell[5]] = 0.5 * (
-                    pos_states[cell[2]] - pos_states[cell[0]]
-                )
-                current_constraint += 1
+        for obstacle in self.obstacles:
+            for vertex in self.vertices:
+                if obstacle.check_intersection(vertex):
+                    nearest_point = obstacle.nearest_point(vertex)
+                    constraints_array.append(vertex[0] - nearest_point[0])
+                    constraints_array.append(vertex[1] - nearest_point[1])
+        return np.array(constraints_array)
 
-            for obstacle in self.obstacles:
-                for v_idx, vertex in enumerate(self.vertices):
-                    if obstacle.check_intersection(vertex):
-                        jacobian_mat[current_constraint, 2 * v_idx] = 1
-                        jacobian_mat[current_constraint + 1, 2 * v_idx + 1] = 1
-                        current_constraint += 2
+    def jacobian(self):
+        jacobian_mat = np.zeros((len(self.constraints()), len(self.pos)))
+        current_constraint = 0
+        for idx in self.boundary_indices:
+            jacobian_mat[current_constraint, idx] = 1
+            current_constraint += 1
 
-            return jacobian_mat
-
-        def jacobian_derivative(pos_states, vel_states):
-            jacobian_derivative_mat = np.zeros(
-                (len(constraint_array(pos_states)), len(pos_states))
+        for cell, stateful_cell in zip(self.cells, self.stateful_cells):
+            diff_array = 0.5 * (
+                np.roll(self.vertices[cell], 1, axis=0)
+                - np.roll(self.vertices[cell], -1, axis=0)
             )
-            current_constraint = len(boundary_constraints)
+            jacobian_entry = np.empty((diff_array.size,))
+            jacobian_entry[0::2] = -diff_array[:, 1]
+            jacobian_entry[1::2] = diff_array[:, 0]
+            jacobian_mat[current_constraint, stateful_cell] = jacobian_entry
+            current_constraint += 1
 
-            for cell in self.stateful_cells:
-                jacobian_derivative_mat[current_constraint, cell[0]] = 0.5 * (
-                    vel_states[cell[3]] - vel_states[cell[5]]
-                )
-                jacobian_derivative_mat[current_constraint, cell[1]] = 0.5 * (
-                    vel_states[cell[4]] - vel_states[cell[2]]
-                )
-                jacobian_derivative_mat[current_constraint, cell[2]] = 0.5 * (
-                    vel_states[cell[5]] - vel_states[cell[1]]
-                )
-                jacobian_derivative_mat[current_constraint, cell[3]] = 0.5 * (
-                    vel_states[cell[0]] - vel_states[cell[4]]
-                )
-                jacobian_derivative_mat[current_constraint, cell[4]] = 0.5 * (
-                    vel_states[cell[1]] - vel_states[cell[3]]
-                )
-                jacobian_derivative_mat[current_constraint, cell[5]] = 0.5 * (
-                    vel_states[cell[2]] - vel_states[cell[0]]
-                )
-                current_constraint += 1
+        for obstacle in self.obstacles:
+            for v_idx, vertex in enumerate(self.vertices):
+                if obstacle.check_intersection(vertex):
+                    jacobian_mat[current_constraint, 2 * v_idx] = 1
+                    jacobian_mat[current_constraint + 1, 2 * v_idx + 1] = 1
+                    current_constraint += 2
 
-            return jacobian_derivative_mat
+        return jacobian_mat
 
-        return constraint_array, jacobian, jacobian_derivative
+    def jacobian_derivative(self):
+        jacobian_derivative_mat = np.zeros((len(self.constraints()), len(self.pos)))
+        current_constraint = len(self.boundary_indices)
+
+        for cell, stateful_cell in zip(self.cells, self.stateful_cells):
+            diff_array = 0.5 * (
+                np.roll(self.velocities[cell], 1, axis=0)
+                - np.roll(self.velocities[cell], -1, axis=0)
+            )
+            jacobian_entry = np.empty((diff_array.size,))
+            jacobian_entry[0::2] = -diff_array[:, 1]
+            jacobian_entry[1::2] = diff_array[:, 0]
+            jacobian_derivative_mat[current_constraint, stateful_cell] = jacobian_entry
+            current_constraint += 1
+
+        # for cell in self.stateful_cells:
+        #     jacobian_derivative_mat[current_constraint, cell[0]] = 0.5 * (
+        #         self.vel[cell[3]] - self.vel[cell[5]]
+        #     )
+        #     jacobian_derivative_mat[current_constraint, cell[1]] = 0.5 * (
+        #         self.vel[cell[4]] - self.vel[cell[2]]
+        #     )
+        #     jacobian_derivative_mat[current_constraint, cell[2]] = 0.5 * (
+        #         self.vel[cell[5]] - self.vel[cell[1]]
+        #     )
+        #     jacobian_derivative_mat[current_constraint, cell[3]] = 0.5 * (
+        #         self.vel[cell[0]] - self.vel[cell[4]]
+        #     )
+        #     jacobian_derivative_mat[current_constraint, cell[4]] = 0.5 * (
+        #         self.vel[cell[1]] - self.vel[cell[3]]
+        #     )
+        #     jacobian_derivative_mat[current_constraint, cell[5]] = 0.5 * (
+        #         self.vel[cell[2]] - self.vel[cell[0]]
+        #     )
+        #     current_constraint += 1
+
+        return jacobian_derivative_mat
 
     def add_obstacle(self, obstacle):
         """Add an obstacle that the arm may interact with"""
@@ -350,8 +333,10 @@ class HydrostatArm:
         self.calc_internal_forces()
         edge_forces = self.calc_edge_damping()
 
-        jac = self.jacobian(self.pos)
-        djac = self.jacobian_derivative(self.pos, self.vel)
+        # jac = self.jacobian(self.pos)
+        # djac = self.jacobian_derivative(self.pos, self.vel)
+        jac = self.jacobian()
+        djac = self.jacobian_derivative()
         ks = 500
         kd = 10
 
@@ -360,7 +345,7 @@ class HydrostatArm:
             - jac
             @ self.inv_mass_mat
             @ (self.external_forces + self.internal_forces - edge_forces)
-            - ks * self.constraints(self.pos)
+            - ks * self.constraints()
             - kd * jac @ self.vel
         )
 
@@ -388,8 +373,9 @@ class HydrostatArm:
 
         self.errors.append(
             [
-                self.cell_volume(self.pos[cell]) - self.cell_volume(self.pos_init[cell])
-                for cell in self.stateful_cells
+                self.cell_volume(self.vertices[cell])
+                - self.cell_volume(self.vertices_init[cell])
+                for cell in self.cells
             ]
         )
 
@@ -407,3 +393,12 @@ class HydrostatArm:
     def pos(self, value):
         self._pos = value
         self.vertices = self._pos.reshape(-1, 2)
+
+    @property
+    def vel(self):
+        return self._vel
+
+    @vel.setter
+    def vel(self, value):
+        self._vel = value
+        self.velocities = self._vel.reshape(-1, 2)
