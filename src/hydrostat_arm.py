@@ -49,8 +49,8 @@ class HydrostatArm:
         self.pos_init = np.ravel(self.vertices)
         self.vertices_init = self.vertices.copy()
         self.vel_init = np.zeros_like(self.pos_init)
-        self.pos = self.pos_init.copy()  # stateful position
-        self.vel = self.vel_init.copy()  # stateful velocity
+        self.stateful_pos = self.pos_init.copy()  # stateful position
+        self.stateful_vel = self.vel_init.copy()  # stateful velocity
         self.velocities = np.zeros_like(self.vertices)
 
         # list of tuples for the purposes of drawing the network. In order
@@ -64,7 +64,7 @@ class HydrostatArm:
         self.edges = []
         for cell in self.cells:
             for i, _ in enumerate(cell):
-                vertex_indices = (cell[i], cell[(i + 1) % 3])
+                vertex_indices = (cell[i], cell[(i + 1) % len(cell)])
                 edge = (min(vertex_indices), max(vertex_indices))
                 if edge not in self.edges:
                     self.edges.append(edge)
@@ -73,15 +73,15 @@ class HydrostatArm:
         for cell in self.cells:
             cell_edges = []
             for i, _ in enumerate(cell):
-                vertex_indices = (cell[i], cell[(i + 1) % 3])
+                vertex_indices = (cell[i], cell[(i + 1) % len(cell)])
                 edge = (min(vertex_indices), max(vertex_indices))
                 cell_edges.append(self.edges.index(edge))
             self.cell_edge_map.append(cell_edges)
 
         self.muscles = np.zeros(len(self.edges))
 
-        self.external_forces = np.zeros_like(self.pos)
-        self.internal_forces = np.zeros_like(self.pos)
+        self.external_forces = np.zeros_like(self.stateful_pos)
+        self.internal_forces = np.zeros_like(self.stateful_pos)
 
         # fix first two vertices if no dof specified
         if not self.dof_dict:
@@ -98,9 +98,9 @@ class HydrostatArm:
         self.logger = DataLogger(self.edges)
         self.logger.log(
             self.timestamp,
-            self.pos,
-            self.vel,
-            np.zeros_like(self.pos),
+            self.stateful_pos,
+            self.stateful_vel,
+            np.zeros_like(self.stateful_pos),
             self.external_forces,
             self.internal_forces,
         )
@@ -111,15 +111,11 @@ class HydrostatArm:
         """Calculate the signed volume of an nxd array"""
         rolled_vertices = np.roll(vertices, -1, axis=0)
         return 0.5 * np.sum(-np.diff(vertices * rolled_vertices[:, ::-1], axis=1))
-        # return 0.5 * (
-        #     (vertices[1, 0] - vertices[0, 0]) * (vertices[2, 1] - vertices[0, 1])
-        #     - ((vertices[1, 1] - vertices[0, 1]) * (vertices[2, 0] - vertices[0, 0]))
-        # )
 
     def constraints(self):
         constraints_array = []
         for idx in self.boundary_indices:
-            constraints_array.append(self.pos[idx] - self.pos_init[idx])
+            constraints_array.append(self.stateful_pos[idx] - self.pos_init[idx])
 
         for cell in self.cells:
             constraints_array.append(
@@ -136,7 +132,7 @@ class HydrostatArm:
         return np.array(constraints_array)
 
     def jacobian(self):
-        jacobian_mat = np.zeros((len(self.constraints()), len(self.pos)))
+        jacobian_mat = np.zeros((len(self.constraints()), len(self.stateful_pos)))
         current_constraint = 0
         for idx in self.boundary_indices:
             jacobian_mat[current_constraint, idx] = 1
@@ -163,7 +159,9 @@ class HydrostatArm:
         return jacobian_mat
 
     def jacobian_derivative(self):
-        jacobian_derivative_mat = np.zeros((len(self.constraints()), len(self.pos)))
+        jacobian_derivative_mat = np.zeros(
+            (len(self.constraints()), len(self.stateful_pos))
+        )
         current_constraint = len(self.boundary_indices)
 
         for cell, stateful_cell in zip(self.cells, self.stateful_cells):
@@ -177,27 +175,6 @@ class HydrostatArm:
             jacobian_derivative_mat[current_constraint, stateful_cell] = jacobian_entry
             current_constraint += 1
 
-        # for cell in self.stateful_cells:
-        #     jacobian_derivative_mat[current_constraint, cell[0]] = 0.5 * (
-        #         self.vel[cell[3]] - self.vel[cell[5]]
-        #     )
-        #     jacobian_derivative_mat[current_constraint, cell[1]] = 0.5 * (
-        #         self.vel[cell[4]] - self.vel[cell[2]]
-        #     )
-        #     jacobian_derivative_mat[current_constraint, cell[2]] = 0.5 * (
-        #         self.vel[cell[5]] - self.vel[cell[1]]
-        #     )
-        #     jacobian_derivative_mat[current_constraint, cell[3]] = 0.5 * (
-        #         self.vel[cell[0]] - self.vel[cell[4]]
-        #     )
-        #     jacobian_derivative_mat[current_constraint, cell[4]] = 0.5 * (
-        #         self.vel[cell[1]] - self.vel[cell[3]]
-        #     )
-        #     jacobian_derivative_mat[current_constraint, cell[5]] = 0.5 * (
-        #         self.vel[cell[2]] - self.vel[cell[0]]
-        #     )
-        #     current_constraint += 1
-
         return jacobian_derivative_mat
 
     def add_obstacle(self, obstacle):
@@ -206,7 +183,7 @@ class HydrostatArm:
 
     def apply_external_force(self, vertex_idx, force=(0, 0)):
         """Set the external force for a particular vertex"""
-        self.external_forces = np.zeros_like(self.pos)
+        self.external_forces = np.zeros_like(self.stateful_pos)
         self.external_forces[vertex_idx * 2] = force[0]
         self.external_forces[vertex_idx * 2 + 1] = force[1]
 
@@ -216,24 +193,24 @@ class HydrostatArm:
 
     def calc_internal_forces(self):
         """Calculate the internal forces based on muscle activations"""
-        self.internal_forces = np.zeros_like(self.pos)
+        self.internal_forces = np.zeros_like(self.stateful_pos)
         for idx, edge in enumerate(self.edges):
             # each edge has the index of the vertex affected
             # the x component is edge[0]*2, y component is edge[0]*2+1
             # muscles stores the magnitude of force, the direction is along the edge
 
             self.internal_forces[edge[0] * 2] += self.muscles[idx] * (
-                self.pos[edge[1] * 2] - self.pos[edge[0] * 2]
+                self.stateful_pos[edge[1] * 2] - self.stateful_pos[edge[0] * 2]
             )
             self.internal_forces[edge[0] * 2 + 1] += self.muscles[idx] * (
-                self.pos[edge[1] * 2 + 1] - self.pos[edge[0] * 2 + 1]
+                self.stateful_pos[edge[1] * 2 + 1] - self.stateful_pos[edge[0] * 2 + 1]
             )
 
             self.internal_forces[edge[1] * 2] += self.muscles[idx] * (
-                self.pos[edge[0] * 2] - self.pos[edge[1] * 2]
+                self.stateful_pos[edge[0] * 2] - self.stateful_pos[edge[1] * 2]
             )
             self.internal_forces[edge[1] * 2 + 1] += self.muscles[idx] * (
-                self.pos[edge[0] * 2 + 1] - self.pos[edge[1] * 2 + 1]
+                self.stateful_pos[edge[0] * 2 + 1] - self.stateful_pos[edge[1] * 2 + 1]
             )
 
     def control_muscles(self):
@@ -311,7 +288,7 @@ class HydrostatArm:
         """Return a length n array of forces caused by linear damping in the
         edges."""
         edge_forces = np.zeros_like(self.vertices, dtype=float)
-        vertex_velocities = self.vel.reshape(-1, 2)
+        vertex_velocities = self.stateful_vel.reshape(-1, 2)
         for edge in self.edges:
             edge_vector = self.vertices[edge[0]] - self.vertices[edge[1]]
             edge_unit_vector = edge_vector / np.linalg.norm(edge_vector)
@@ -333,20 +310,20 @@ class HydrostatArm:
         self.calc_internal_forces()
         edge_forces = self.calc_edge_damping()
 
-        # jac = self.jacobian(self.pos)
-        # djac = self.jacobian_derivative(self.pos, self.vel)
+        # jac = self.jacobian(self.stateful_pos)
+        # djac = self.jacobian_derivative(self.stateful_pos, self.stateful_vel)
         jac = self.jacobian()
         djac = self.jacobian_derivative()
         ks = 500
         kd = 10
 
         lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (
-            (jac @ self.inv_mass_mat @ self.damping_mat - djac) @ self.vel
+            (jac @ self.inv_mass_mat @ self.damping_mat - djac) @ self.stateful_vel
             - jac
             @ self.inv_mass_mat
             @ (self.external_forces + self.internal_forces - edge_forces)
             - ks * self.constraints()
-            - kd * jac @ self.vel
+            - kd * jac @ self.stateful_vel
         )
 
         reactions = jac.T @ lagrange_mult
@@ -355,17 +332,17 @@ class HydrostatArm:
             self.external_forces
             + self.internal_forces
             + reactions
-            - self.damping_mat @ self.vel
+            - self.damping_mat @ self.stateful_vel
             - edge_forces
         )
 
-        self.vel = self.vel + accel * dt
-        self.pos = self.pos + self.vel * dt
+        self.stateful_vel = self.stateful_vel + accel * dt
+        self.stateful_pos = self.stateful_pos + self.stateful_vel * dt
 
         self.logger.log(
             self.timestamp,
-            self.pos,
-            self.vel,
+            self.stateful_pos,
+            self.stateful_vel,
             accel,
             self.external_forces,
             self.internal_forces,
@@ -379,26 +356,26 @@ class HydrostatArm:
             ]
         )
 
-        return self.pos, self.vel, accel
+        return self.stateful_pos, self.stateful_vel, accel
 
     def save(self, filename: str = None):
         """Save positions, velocities, accelerations, external forces, and internal forces."""
         self.logger.save(filename)
 
     @property
-    def pos(self):
-        return self._pos
+    def stateful_pos(self):
+        return self._stateful_pos
 
-    @pos.setter
-    def pos(self, value):
-        self._pos = value
-        self.vertices = self._pos.reshape(-1, 2)
+    @stateful_pos.setter
+    def stateful_pos(self, value):
+        self._stateful_pos = value
+        self.vertices = self._stateful_pos.reshape(-1, 2)
 
     @property
-    def vel(self):
-        return self._vel
+    def stateful_vel(self):
+        return self._stateful_vel
 
-    @vel.setter
-    def vel(self, value):
-        self._vel = value
-        self.velocities = self._vel.reshape(-1, 2)
+    @stateful_vel.setter
+    def stateful_vel(self, value):
+        self._stateful_vel = value
+        self.velocities = self._stateful_vel.reshape(-1, 2)
