@@ -133,10 +133,10 @@ class HydrostatArm:
 
     def jacobian(self):
         jacobian_mat = np.zeros((len(self.constraints()), len(self.stateful_pos)))
-        current_constraint = 0
+        constraint_idx = 0
         for idx in self.boundary_indices:
-            jacobian_mat[current_constraint, idx] = 1
-            current_constraint += 1
+            jacobian_mat[constraint_idx, idx] = 1
+            constraint_idx += 1
 
         for cell, stateful_cell in zip(self.cells, self.stateful_cells):
             diff_array = 0.5 * (
@@ -146,15 +146,15 @@ class HydrostatArm:
             jacobian_entry = np.empty((diff_array.size,))
             jacobian_entry[0::2] = -diff_array[:, 1]
             jacobian_entry[1::2] = diff_array[:, 0]
-            jacobian_mat[current_constraint, stateful_cell] = jacobian_entry
-            current_constraint += 1
+            jacobian_mat[constraint_idx, stateful_cell] = jacobian_entry
+            constraint_idx += 1
 
         for obstacle in self.obstacles:
             for v_idx, vertex in enumerate(self.vertices):
                 if obstacle.check_intersection(vertex):
-                    jacobian_mat[current_constraint, 2 * v_idx] = 1
-                    jacobian_mat[current_constraint + 1, 2 * v_idx + 1] = 1
-                    current_constraint += 2
+                    jacobian_mat[constraint_idx, 2 * v_idx] = 1
+                    jacobian_mat[constraint_idx + 1, 2 * v_idx + 1] = 1
+                    constraint_idx += 2
 
         return jacobian_mat
 
@@ -162,7 +162,7 @@ class HydrostatArm:
         jacobian_derivative_mat = np.zeros(
             (len(self.constraints()), len(self.stateful_pos))
         )
-        current_constraint = len(self.boundary_indices)
+        constraint_idx = len(self.boundary_indices)
 
         for cell, stateful_cell in zip(self.cells, self.stateful_cells):
             diff_array = 0.5 * (
@@ -172,8 +172,8 @@ class HydrostatArm:
             jacobian_entry = np.empty((diff_array.size,))
             jacobian_entry[0::2] = -diff_array[:, 1]
             jacobian_entry[1::2] = diff_array[:, 0]
-            jacobian_derivative_mat[current_constraint, stateful_cell] = jacobian_entry
-            current_constraint += 1
+            jacobian_derivative_mat[constraint_idx, stateful_cell] = jacobian_entry
+            constraint_idx += 1
 
         return jacobian_derivative_mat
 

@@ -17,71 +17,58 @@ class NodeDrawer3D:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        glu.gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
+        glu.gluPerspective(45, (display[0] / display[1]), 0.1, 100.0)
         gl.glTranslatef(0.0, 0.0, -10)
         gl.glRotatef(20, 1, 0, 0)
 
-    def main_loop(self):
+        # pygame control parameters
+        self.orbiting = False
+
+    def main_loop(self, simulating=True):
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
                     pygame.quit()
                     sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        # gl.glRotatef(1, 0, 1, 0)  # orbit view
+                        _, _, _ = self.structure.calc_next_states(0.03)
+                        print(self.structure.constraints())
+                        # print(self.structure.jacobian())
+                        # print(self.structure.jacobian_derivative())
 
-            gl.glRotatef(1, 0, 1, 0)  # orbit view
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 2:
+                        self.orbiting = True
+                if event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 2:
+                        self.orbiting = False
+                if event.type == pygame.MOUSEMOTION:
+                    if self.orbiting:
+                        gl.glRotatef(event.rel[0], 0, 1, 0)
+                        # gl.glRotatef(event.rel[1], 1, 0, 0)
+                if event.type == pygame.MOUSEWHEEL:
+                    gl.glTranslatef(0.0, 0.0, event.y)
+
+            # gl.glRotatef(1, 0, 1, 0)  # orbit view
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
+            if simulating:
+                _, _, _ = self.structure.calc_next_states(self.dt)
             self.draw_structure()
 
             actual_fps = self.clock.get_fps()
-            print("Actual FPS:", actual_fps)
+            # print("Actual FPS:", actual_fps)
+            # print("positions:", self.structure.positions)
 
             pygame.display.flip()
             self.clock.tick(self.fps)
 
     def draw_structure(self):
-        self.structure.calc_next_states(self.dt)
         gl.glBegin(gl.GL_LINES)
         for edge in self.structure.edges:
             for vertex in edge:
-                gl.glVertex3fv(self.structure.vertices[vertex])
+                gl.glVertex3fv(self.structure.positions[vertex])
         gl.glEnd()
-
-
-if __name__ == "__main__":
-    drawer = NodeDrawer3D(None, 1 / 60)
-    drawer.main_loop()
-
-
-# if __name__ == "__main__":
-#     pygame.init()
-
-#     display = (800, 600)
-#     screen = pygame.display.set_mode(display, pygame.DOUBLEBUF | pygame.OPENGL)
-#     fps = 60
-#     dt = 1 / 60
-
-#     clock = pygame.time.Clock()
-#     running = True
-
-#     glu.gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
-#     gl.glTranslatef(0.0, 0.0, -10)
-#     gl.glRotatef(20, 1, 0, 0)
-
-#     while running:
-#         for event in pygame.event.get():
-#             if event.type == pygame.QUIT:
-#                 running = False
-#                 pygame.quit()
-#                 quit()
-
-#         gl.glRotatef(1, 0, 1, 0)  # orbit view
-#         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-
-#         # draw lines
-#         fps = clock.get_fps()
-#         print(fps)
-
-#         pygame.display.flip()
-#         clock.tick(60)
