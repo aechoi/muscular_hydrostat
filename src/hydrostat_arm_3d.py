@@ -107,12 +107,150 @@ class HydrostatCell3D:
 
         return djacobian / 6
 
-    def face_normal(self, positions, face_idx):
-        """Calculate the best fit normal plane and centroid for a face. The
-        sign of the normal is not guaranteed."""
-        centroid = np.average(positions[self.faces[face_idx]], axis=0)
-        _, _, Vh = np.linalg.svd(positions[self.faces[face_idx]] - centroid)
-        return Vh[-1], centroid
+    def face_constraints(self, positions, velocities, face_idx):
+        """Calculate the constraint vector, Jacobian, and Jacobian time
+        derivative for maintaining face planarity constraints."""
+        points = positions[self.faces[face_idx]]
+        dpointsdt = velocities[self.faces[face_idx]]
+        N = len(points)
+
+        centroid = np.average(points, axis=0)
+        dcentroiddt = np.average(dpointsdt, axis=0)
+        centered_points = points - centroid
+        centered_velocities = dpointsdt - dcentroiddt
+
+        cov, dcdp, dcdt, ddcdpdt = self.calc_covariance_variables(
+            centered_points, centered_velocities
+        )
+        normal, dndp, dndt, ddndpdt = self.calc_normal_variables(
+            cov, dcdp, dcdt, ddcdpdt
+        )
+
+        indices = self.get_vec_indices(self.faces[face_idx])
+
+        constraints = centered_points @ normal
+        print(constraints.shape)
+        jacobian = np.zeros(positions.size)
+        jacobian[indices] = (
+            (N - 1) / N * normal[None, :] + centered_points[:, None, :] @ dndp
+        ).flatten()
+        print(
+            ((N - 1) / N * normal[None, :] + centered_points[:, None, :] @ dndp).shape
+        )
+        print(jacobian.shape)
+        print(jacobian)
+
+        djacdt = np.zeros(positions.size)
+        djacdt[indices] = (
+            (N - 1) / N * dndt[None, :]
+            + centered_velocities[:, None, :] @ dndp
+            + centered_points[:, None, :] @ ddndpdt
+        ).flatten()
+        print(
+            (
+                (N - 1) / N * dndt[None, :]
+                + centered_velocities[:, None, :] @ dndp
+                + centered_points[:, None, :] @ ddndpdt
+            ).shape
+        )
+
+        return constraints, jacobian, djacdt
+
+    def calc_covariance_variables(self, centered_points, centered_velocities):
+        N = len(centered_points)
+
+        cov = np.cov(centered_points.T)
+
+        # dCdP
+        units = np.expand_dims(np.eye(3), (0, 2))
+        points_tensor = np.expand_dims(centered_points, (1, 3))
+        dcdp_single = points_tensor @ units
+        dcdp = 1 / (N - 1) * (dcdp_single.transpose(0, 1, 3, 2) + dcdp_single)
+
+        # dCdt
+        dcdt_single = np.einsum("ij,ik->jk", centered_velocities, centered_points)
+        dcdt = 1 / (N - 1) * (dcdt_single + dcdt_single.T)
+
+        # ddCdPdt
+        velocity_tensor = np.expand_dims(centered_velocities, (1, 3))
+        ddcdpdt_single = velocity_tensor @ units
+        ddcdpdt = 1 / (N - 1) * (ddcdpdt_single.transpose(0, 1, 3, 2) + ddcdpdt_single)
+
+        return cov, dcdp, dcdt, ddcdpdt
+
+    def calc_normal_variables(self, cov, dcdp, dcdt, ddcdpdt):
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        min_eigvec = eigvecs[:, np.argmin(eigvals)]
+
+        normal = min_eigvec
+
+        # dNdP
+        eigval_dif = eigvals[:, None] - eigvals
+        eigval_dif = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
+        dndp = np.einsum(
+            "ijkl,lk,mk->ijm",
+            eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+            min_eigvec.reshape(-1, 1),
+            eigvecs,
+        )
+
+        dvdts = (-eigval_dif * (eigvecs.T @ dcdt @ eigvecs))[:, :, None] * eigvecs.T[
+            :, None, :
+        ]
+        dvdts = np.sum(dvdts, axis=0).T
+        dndt = dvdts[:, 0]
+
+        dldts = np.einsum("ij,ji->i", eigvecs.T @ dcdt, eigvecs)
+
+        deigval_difdt = dldts[:, None] - dldts
+        deigval_difdt = -np.divide(
+            deigval_difdt,
+            (eigvals[:, None] - eigvals) ** 2,
+            out=deigval_difdt,
+            where=deigval_difdt != 0,
+        )
+
+        ddndpdt = (
+            np.einsum(
+                "ijkl,lk,mk->ijm",
+                deigval_difdt[0][:, None] * eigvecs.T @ dcdp,
+                min_eigvec.reshape(-1, 1),
+                eigvecs,
+            )
+            + np.einsum(
+                "ijkl,lk,mk->ijm",
+                eigval_dif[0][:, None] * dvdts.T @ dcdp,
+                min_eigvec.reshape(-1, 1),
+                eigvecs,
+            )
+            + np.einsum(
+                "ijkl,lk,mk->ijm",
+                eigval_dif[0][:, None] * eigvecs.T @ ddcdpdt,
+                min_eigvec.reshape(-1, 1),
+                eigvecs,
+            )
+            + np.einsum(
+                "ijkl,lk,mk->ijm",
+                eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+                dvdts[:, 0].reshape(-1, 1),
+                eigvecs,
+            )
+            + np.einsum(
+                "ijkl,lk,mk->ijm",
+                eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+                min_eigvec.reshape(-1, 1),
+                dvdts,
+            )
+        )
+
+        return normal, dndp, dndt, ddndpdt
+
+    # def face_normal(self, positions, face_idx):
+    #     """Calculate the best fit normal plane and centroid for a face. The
+    #     sign of the normal is not guaranteed."""
+    #     centroid = np.average(positions[self.faces[face_idx]], axis=0)
+    #     _, _, Vh = np.linalg.svd(positions[self.faces[face_idx]] - centroid)
+    #     return Vh[-1], centroid
 
     def get_vec_indices(self, vertex_indices: list):
         """Return the list of indices that correspond to the vertex indices."""
@@ -208,12 +346,11 @@ class HydrostatArm3D:
             for idx, face in enumerate(cell.faces):
                 if len(face) <= 3:
                     continue
-                normal, centroid = cell.face_normal(self.positions, idx)
-                errors = (self.positions[face] - centroid) @ normal
-                # print("normal", normal)
-                # print("centroid", centroid)
-                # print("errors", errors)
-                constraints.extend([*errors])
+                # recalculating every time for each matrix, do all at once instead TODO
+                face_constraints, _, _ = cell.face_constraints(
+                    self.positions, self.velocities, idx
+                )
+                constraints.extend(face_constraints)
 
             # Add self intersection constraints
             # TODO
@@ -253,12 +390,11 @@ class HydrostatArm3D:
             for idx, face in enumerate(cell.faces):
                 if len(face) <= 3:
                     continue
-                normal, _ = cell.face_normal(self.positions, idx)
-                for vertex in face:
-                    jacobian[constraint_idx, cell.get_vec_indices(vertex)] = normal * (
-                        1 - 1 / len(face)
-                    )
-                    constraint_idx += 1
+                _, face_jacobian, _ = cell.face_constraints(
+                    self.positions, self.velocities, idx
+                )
+                jacobian[constraint_idx] = face_jacobian
+                constraint_idx += 1
 
             # Add self intersection constraints
             # TODO
@@ -282,11 +418,14 @@ class HydrostatArm3D:
                 constraint_idx += 1
 
             # Add face constraints
-            for face in cell.faces:
+            for idx, face in enumerate(cell.faces):
                 if len(face) <= 3:
                     continue
-                for vertex in face:
-                    constraint_idx += 1
+                _, _, face_djacdt = cell.face_constraints(
+                    self.positions, self.velocities, idx
+                )
+                djacobian[constraint_idx] = face_djacdt
+                constraint_idx += 1
 
             # Add self intersection constraints TODO
 
