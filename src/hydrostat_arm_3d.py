@@ -113,6 +113,7 @@ class HydrostatCell3D:
         points = positions[self.faces[face_idx]]
         dpointsdt = velocities[self.faces[face_idx]]
         N = len(points)
+        D = len(points[0])
 
         centroid = np.average(points, axis=0)
         dcentroiddt = np.average(dpointsdt, axis=0)
@@ -127,32 +128,22 @@ class HydrostatCell3D:
         )
 
         indices = self.get_vec_indices(self.faces[face_idx])
-
         constraints = centered_points @ normal
-        print(constraints.shape)
-        jacobian = np.zeros(positions.size)
-        jacobian[indices] = (
-            (N - 1) / N * normal[None, :] + centered_points[:, None, :] @ dndp
-        ).flatten()
-        print(
-            ((N - 1) / N * normal[None, :] + centered_points[:, None, :] @ dndp).shape
-        )
-        print(jacobian.shape)
-        print(jacobian)
 
-        djacdt = np.zeros(positions.size)
-        djacdt[indices] = (
-            (N - 1) / N * dndt[None, :]
-            + centered_velocities[:, None, :] @ dndp
-            + centered_points[:, None, :] @ ddndpdt
-        ).flatten()
-        print(
-            (
-                (N - 1) / N * dndt[None, :]
-                + centered_velocities[:, None, :] @ dndp
-                + centered_points[:, None, :] @ ddndpdt
-            ).shape
-        )
+        dPdP = np.zeros((N, N, D, D))
+        dPdP[np.arange(N), np.arange(N), :, :] = np.eye(D)
+        dcentereddP = dPdP - np.eye(D)[None, None, :, :] / N
+        jacobian = np.zeros((N, positions.size))
+        jacobian[:, indices] = (
+            dcentereddP @ normal + np.einsum("ij,klj->ikl", centered_points, dndp)
+        ).reshape(N, -1)
+
+        djacdt = np.zeros((N, positions.size))
+        djacdt[:, indices] = (
+            dcentereddP @ dndt
+            + np.einsum("ij,klj->ikl", centered_velocities, dndp)
+            + np.einsum("ij,klj->ikl", centered_points, ddndpdt)
+        ).reshape(N, -1)
 
         return constraints, jacobian, djacdt
 
@@ -245,12 +236,23 @@ class HydrostatCell3D:
 
         return normal, dndp, dndt, ddndpdt
 
-    # def face_normal(self, positions, face_idx):
-    #     """Calculate the best fit normal plane and centroid for a face. The
-    #     sign of the normal is not guaranteed."""
-    #     centroid = np.average(positions[self.faces[face_idx]], axis=0)
-    #     _, _, Vh = np.linalg.svd(positions[self.faces[face_idx]] - centroid)
-    #     return Vh[-1], centroid
+    # def self_intersection_constraint(self, positions, velocities):
+    #     """return the constraints, jacobian, and jacobian time derivative for
+    #     cell points intersecting the cell edges"""
+    #     points = positions[self.vertices]
+    #     print(points)
+    #     # face vertices are ordered counter clockwise from outside
+    #     constraints = []
+    #     normals = np.zeros((len(self.faces), 3))
+    #     centroids = np.zeros_like(normals)
+    #     for idx, face in enumerate(self.faces):
+    #         face_points = positions[face]
+    #         centroids[idx] = np.average(face_points, axis=0)
+    #         normals[idx] = np.cross(*(face_points - centroids[idx])[:2])
+    #     intersect = np.einsum(
+    #         "ijk,jk->ij", points[:, None, :] - centroids[None, :, :], normals
+    #     )
+    #     np.where(intersect > 0)[0]
 
     def get_vec_indices(self, vertex_indices: list):
         """Return the list of indices that correspond to the vertex indices."""
@@ -393,8 +395,8 @@ class HydrostatArm3D:
                 _, face_jacobian, _ = cell.face_constraints(
                     self.positions, self.velocities, idx
                 )
-                jacobian[constraint_idx] = face_jacobian
-                constraint_idx += 1
+                jacobian[constraint_idx : constraint_idx + len(face)] = face_jacobian
+                constraint_idx += len(face)
 
             # Add self intersection constraints
             # TODO
@@ -424,8 +426,8 @@ class HydrostatArm3D:
                 _, _, face_djacdt = cell.face_constraints(
                     self.positions, self.velocities, idx
                 )
-                djacobian[constraint_idx] = face_djacdt
-                constraint_idx += 1
+                djacobian[constraint_idx : constraint_idx + len(face)] = face_djacdt
+                constraint_idx += len(face)
 
             # Add self intersection constraints TODO
 
@@ -478,17 +480,10 @@ class HydrostatArm3D:
         active_edge_forces = self.active_edge_forces()
         passive_edge_forces = self.passive_edge_forces()
 
-        # lagrange_mult = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T) @ (
-        #     (jac @ self.inv_mass_mat @ self.damping_mat - djac) @ self.velocity_vector
-        #     - jac
-        #     @ self.inv_mass_mat
-        #     @ (
-        #         self.external_forces + active_edge_forces - passive_edge_forces
-        #     ).flatten()
-        #     - self.constraint_spring * self.constraints()
-        #     - self.constraint_damper * jac @ self.velocity_vector
-        # )
-        front_inverse = np.linalg.inv(jac @ self.inv_mass_mat @ jac.T)
+        # TODO figure out how to rigorously size the regularization term
+        front_inverse = np.linalg.inv(
+            jac @ self.inv_mass_mat @ jac.T + np.eye(len(self.constraints())) * 1e-6
+        )
         velocity_term = (
             jac @ self.inv_mass_mat @ self.damping_mat - djac
         ) @ self.velocity_vector
