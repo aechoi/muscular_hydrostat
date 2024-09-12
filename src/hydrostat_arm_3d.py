@@ -55,7 +55,7 @@ class HydrostatCell3D:
         volume = 0
         apex_position = positions[self.vertices[0]]
         for triangle in self.triangles:
-            if 0 in triangle:
+            if self.vertices[0] in triangle:
                 continue
             relative_positions = positions[triangle] - apex_position
             if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
@@ -70,7 +70,7 @@ class HydrostatCell3D:
         jacobian = np.zeros(positions.size)
         apex_position = positions[self.vertices[0]]
         for triangle in self.triangles:
-            if 0 in triangle:
+            if self.vertices[0] in triangle:
                 continue
             relative_positions = positions[triangle] - apex_position
             if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
@@ -87,7 +87,7 @@ class HydrostatCell3D:
         apex_position = positions[self.vertices[0]]
         apex_velocity = velocities[self.vertices[0]]
         for triangle in self.triangles:
-            if 0 in triangle:
+            if self.vertices[0] in triangle:
                 continue
             relative_positions = positions[triangle] - apex_position
             relative_velocities = positions[triangle] - apex_velocity
@@ -380,7 +380,9 @@ class HydrostatArm3D:
         for cell in self.cells:
             # Add boundary constraints
             for idx in cell.fixed_indices:
-                jacobian[constraint_idx * 3 : constraint_idx * 3 + 3, idx] = 1
+                jacobian[constraint_idx, idx * 3] = 1
+                jacobian[constraint_idx + 1, idx * 3 + 1] = 1
+                jacobian[constraint_idx + 2, idx * 3 + 2] = 1
                 constraint_idx += 3
 
             # Add volume constraints
