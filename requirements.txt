@@ -3,4 +3,6 @@ cvxpy
 matplotlib
 networkx
 numpy
+pygame
+pyopengl
 scipy
