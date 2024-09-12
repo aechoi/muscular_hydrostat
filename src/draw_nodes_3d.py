@@ -19,7 +19,7 @@ class NodeDrawer3D:
         self.running = True
 
         glu.gluPerspective(45, (display[0] / display[1]), 0.1, 100.0)
-        gl.glTranslatef(0.0, 0.0, -10)
+        gl.glTranslatef(0.0, -3, -10)
         gl.glRotatef(-70, 1, 0, 0)
 
         # pygame control parameters

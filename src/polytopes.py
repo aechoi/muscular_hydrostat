@@ -78,36 +78,60 @@ class Cube:
     ]
 
 
+class Polytope:
+    def __init__(self, vertices, edges, faces):
+        self.vertices = vertices.tolist()
+        self.edges = edges.tolist()
+        self.faces = faces.tolist()
+
+
 class CubeArm:
     def __init__(self, height=5):
+        # Generate points
+        # generate single cells
+        # return points and list of cells
         base_points = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
-        base_edges = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
-        base_face = np.array([[0, 3, 2, 1]])
-        upright_face_base = np.array(
-            [[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+        base_vertices = np.arange(8)
+        base_edges = np.array(
+            [
+                [0, 1],
+                [1, 2],
+                [2, 3],
+                [3, 0],
+                [0, 4],
+                [1, 5],
+                [2, 6],
+                [3, 7],
+                [4, 5],
+                [5, 6],
+                [6, 7],
+                [7, 4],
+            ]
         )
-        self.points = base_points.copy()
-        self.edges = base_edges.copy()
-        self.faces = base_face.copy()
+        base_faces = np.array(
+            [
+                [0, 3, 2, 1],
+                [0, 1, 5, 4],
+                [1, 2, 6, 5],
+                [2, 3, 7, 6],
+                [3, 0, 4, 7],
+                [4, 7, 6, 5],
+            ]
+        )
 
-        for level in range(height):
-            new_points = base_points + np.array([0, 0, level + 1])
+        self.points = base_points.copy()
+        new_points = base_points + np.array([0, 0, 1])
+        self.points = np.vstack((self.points, new_points))
+        self.cells = []
+        self.cells.append(Polytope(base_vertices, base_edges, base_faces))
+        for level in range(height - 1):
+            new_points = base_points + np.array([0, 0, level + 2])
             self.points = np.vstack((self.points, new_points))
 
-            upright_edges = np.column_stack(
-                (np.arange(4) + 4 * (level), np.arange(4) + 4 * (level + 1))
+            offset = 4 * (level + 1)
+            polytope = Polytope(
+                base_vertices + offset, base_edges + offset, base_faces + offset
             )
-            self.edges = np.vstack(
-                (self.edges, upright_edges, base_edges + 4 * (level + 1))
-            )
+            self.cells.append(polytope)
 
-            self.faces = np.vstack(
-                (
-                    self.faces,
-                    upright_face_base + 4 * (level),
-                    base_face + 4 * (level + 1),
-                )
-            )
-        self.edges = self.edges.tolist()
-        self.faces = self.faces.tolist()
         self.vertices = np.arange(len(self.points)).tolist()

@@ -40,6 +40,7 @@ class HydrostatCell3D:
 
         TODO: omit triangles with index 0 to avoid filtering out later.
         I don't think 0 index triangles are ever used.
+        TODO: need to ensure that triangles maintain ccw from outside
         """
         triangles = []
         for face in self.faces:
@@ -54,13 +55,17 @@ class HydrostatCell3D:
         It doesn't have to literally be volume"""
         volume = 0
         apex_position = positions[self.vertices[0]]
+        print(self.triangles)
         for triangle in self.triangles:
             if self.vertices[0] in triangle:
                 continue
             relative_positions = positions[triangle] - apex_position
-            if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
-                continue
+            print(relative_positions)
+            print(np.linalg.det(relative_positions))
+            # if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
+            #     continue
             volume += np.linalg.det(relative_positions)
+        print(volume)
         return volume / 6
 
     def volume_jacobian(self, positions):
@@ -290,7 +295,6 @@ class HydrostatArm3D:
         self.edges = []
         for cell in self.cells:
             for edge in cell.edges:
-                # TODO check if sorting necessary. Don't remember why...
                 if sorted(edge) not in self.edges:
                     self.edges.append(edge)
 
@@ -403,7 +407,7 @@ class HydrostatArm3D:
             # Add self intersection constraints
             # TODO
 
-        # Add obstacle collision constraints
+        # Add obstacle collision constraints TODO
         return jacobian
 
     def jacobian_derivative(self) -> np.ndarray:
@@ -448,15 +452,23 @@ class HydrostatArm3D:
         self, edge_indices: list[int], force: float
     ) -> np.ndarray:
         """Modify muscle array to have new force. Return the current muscle
-        configuration."""
+        configuration. Muscle actuation is always positive and relates to a
+        contraction of the muscle."""
+        if force < 0:
+            raise ValueError("Muscle activation must be positive")
         self.muscles[edge_indices] = force
         return self.muscles
 
     def active_edge_forces(self) -> np.ndarray:
         """Given the current state of muscle actuations, return the forces
-        on each vertex. TODO"""
-        internal_forces = np.zeros_like(self.positions)
-        return internal_forces
+        on each vertex."""
+        edge_forces = np.zeros_like(self.positions)
+        for edge, muscle_force in zip(self.edges, self.muscles):
+            edge_vector = self.positions[edge[1]] - self.positions[edge[0]]
+            edge_vector = edge_vector / np.linalg.norm(edge_vector)
+            edge_forces[edge[1]] -= edge_vector * muscle_force
+            edge_forces[edge[0]] += edge_vector * muscle_force
+        return edge_forces
 
     def passive_edge_forces(self) -> np.ndarray:
         """Forces from passive elements"""
