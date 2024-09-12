@@ -80,58 +80,6 @@ class HydrostatCell3D:
 
         return volume, jacobian, djacdt
 
-    def volume(self, positions):
-        """Calculate the volume of the polyhedron
-
-        TODO Get rid of all the /6 factors in volume and jacobian calculations.
-        It doesn't have to literally be volume"""
-        volume = 0
-        apex_position = positions[self.vertices[0]]
-        for triangle in self.triangles:
-            relative_positions = positions[triangle] - apex_position
-            volume += np.linalg.det(relative_positions)
-        return volume
-
-    def volume_jacobian(self, positions):
-        """Calculate the vector shaped volume jacobian for the cell.
-
-        TODO: Merge with volume calc to reduce redundant calculations"""
-        jacobian = np.zeros(positions.size)
-        apex_position = positions[self.vertices[0]]
-        for triangle in self.triangles:
-            relative_positions = positions[triangle] - apex_position
-            if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
-                continue
-            cofactors = (
-                np.linalg.det(relative_positions) * np.linalg.inv(relative_positions).T
-            )
-            jacobian[self.get_vec_indices([0])] -= np.sum(cofactors, axis=0)
-            jacobian[self.get_vec_indices(triangle)] += cofactors.flatten()
-        return jacobian
-
-    def volume_jacobian_derivative(self, positions, velocities):
-        djacobian = np.zeros(positions.size)
-        apex_position = positions[self.vertices[0]]
-        apex_velocity = velocities[self.vertices[0]]
-        for triangle in self.triangles:
-            relative_positions = positions[triangle] - apex_position
-            relative_velocities = positions[triangle] - apex_velocity
-            if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
-                continue
-
-            cofactors = (
-                np.linalg.det(relative_positions) * np.linalg.inv(relative_positions).T
-            )
-
-            dcofactors = np.trace(cofactors.T @ relative_velocities) * np.linalg.inv(
-                relative_positions
-            ) - cofactors.T @ relative_velocities @ np.linalg.inv(relative_positions)
-            dcofactors = dcofactors.T
-            djacobian[self.get_vec_indices([0])] -= np.sum(dcofactors, axis=0)
-            djacobian[self.get_vec_indices(triangle)] += dcofactors.flatten()
-
-        return djacobian
-
     def face_constraints(self, positions, velocities, face_idx):
         """Calculate the constraint vector, Jacobian, and Jacobian time
         derivative for maintaining face planarity constraints."""
@@ -320,10 +268,15 @@ class HydrostatArm3D:
 
         self.num_fixed = 0
         self.num_face_vertices = 0
+        self.init_volumes = []
         for cell in self.cells:
             self.num_fixed += len(cell.fixed_indices)
             for face in cell.faces:
                 self.num_face_vertices += len(face)
+            init_volume, _, _ = cell.volume_constraints(
+                self.positions_init, self.velocities
+            )
+            self.init_volumes.append(init_volume)
 
         ## Arm parameters/variables
         self.inv_mass_mat = np.eye(
@@ -373,7 +326,7 @@ class HydrostatArm3D:
         djacdts = np.zeros((len(constraints), len(self.position_vector)))
 
         constraint_idx = 0
-        for cell in self.cells:
+        for cell_idx, cell in enumerate(self.cells):
             # Add boundary constraints
             for idx in cell.fixed_indices:
                 constraints[constraint_idx] = (
@@ -392,15 +345,11 @@ class HydrostatArm3D:
                 constraint_idx += 3
 
             # Add volume constraints
-            # TODO Calc init volume only once
             volume, jacobian, djacdt = cell.volume_constraints(
                 self.positions, self.velocities
             )
-            init_volume, _, _ = cell.volume_constraints(
-                self.positions_init, self.velocities
-            )
             if volume != 0:
-                constraints[constraint_idx] = volume - init_volume
+                constraints[constraint_idx] = volume - self.init_volumes[cell_idx]
                 jacobians[constraint_idx] = jacobian
                 djacdts[constraint_idx] = djacdt
                 constraint_idx += 1
@@ -409,7 +358,6 @@ class HydrostatArm3D:
             for idx, face in enumerate(cell.faces):
                 if len(face) <= 3:
                     continue
-                # recalculating every time for each matrix, do all at once instead TODO
                 face_constraints, face_jacobians, face_djacdts = cell.face_constraints(
                     self.positions, self.velocities, idx
                 )
@@ -419,117 +367,10 @@ class HydrostatArm3D:
                 jacobians[constraint_idx : constraint_idx + len(face)] = face_jacobians
                 djacdts[constraint_idx : constraint_idx + len(face)] = face_djacdts
                 constraint_idx += len(face)
+
+            # TODO Self Intersection
+            # TODO Obstacle Collisions
         return constraints, jacobians, djacdts
-
-    def constraints(self) -> np.ndarray:
-        constraints = []
-        for cell in self.cells:
-            # Add boundary constraints
-            for idx in cell.fixed_indices:
-                constraints.append(self.positions[idx][0] - self.positions_init[idx][0])
-                constraints.append(self.positions[idx][1] - self.positions_init[idx][1])
-                constraints.append(self.positions[idx][2] - self.positions_init[idx][2])
-
-            # Add volume constraints
-            # TODO Calc init volume only once
-            volume, _, _ = cell.volume_constraints(self.positions, self.velocities)
-            init_volume, _, _ = cell.volume_constraints(
-                self.positions_init, self.velocities
-            )
-            if volume != 0:
-                constraints.append(volume - init_volume)
-
-            # Add face constraints
-            for idx, face in enumerate(cell.faces):
-                if len(face) <= 3:
-                    continue
-                # recalculating every time for each matrix, do all at once instead TODO
-                face_constraints, _, _ = cell.face_constraints(
-                    self.positions, self.velocities, idx
-                )
-                constraints.extend(face_constraints)
-
-            # Add self intersection constraints
-            # TODO
-
-        # Add obstacle collision constraints
-        # TODO design 3d obstacle calculations
-        # for obstacle in self.obstacles:
-        #     for vertex in cell.vertices:
-        #         point = self.points[vertex]
-        #         if obstacle.check_intersection(point):
-        #             nearest_point = obstacle.nearest_point(point)
-        #             constraints.append(point[0] - nearest_point[0])
-        #             constraints.append(point[1] - nearest_point[1])
-        #             constraints.append(point[2] - nearest_point[2])
-
-        return np.array(constraints)
-
-    def jacobian(self) -> np.ndarray:
-        # TODO don't recalculate constraints with every jacobian. Honestly,
-        # it might make sense to merge all of these into a single function
-        # because of repeated calculations.
-        jacobian = np.zeros((len(self.constraints()), len(self.position_vector)))
-        constraint_idx = 0
-
-        for cell in self.cells:
-            # Add boundary constraints
-            for idx in cell.fixed_indices:
-                jacobian[constraint_idx, idx * 3] = 1
-                jacobian[constraint_idx + 1, idx * 3 + 1] = 1
-                jacobian[constraint_idx + 2, idx * 3 + 2] = 1
-                constraint_idx += 3
-
-            # Add volume constraints
-            volume, jac, _ = cell.volume_constraints(self.positions, self.velocities)
-            if volume != 0:
-                jacobian[constraint_idx] = jac
-                constraint_idx += 1
-
-            # Add face constraints
-            for idx, face in enumerate(cell.faces):
-                if len(face) <= 3:
-                    continue
-                _, face_jacobian, _ = cell.face_constraints(
-                    self.positions, self.velocities, idx
-                )
-                jacobian[constraint_idx : constraint_idx + len(face)] = face_jacobian
-                constraint_idx += len(face)
-
-            # Add self intersection constraints
-            # TODO
-
-        # Add obstacle collision constraints TODO
-        return jacobian
-
-    def jacobian_derivative(self) -> np.ndarray:
-        djacobian = np.zeros((len(self.constraints()), len(self.position_vector)))
-        constraint_idx = 0
-
-        for cell in self.cells:
-            # Add boundary constraints
-            constraint_idx += 3 * len(cell.fixed_indices)
-
-            # Add volume constraints
-            volume, _, djacdt = cell.volume_constraints(self.positions, self.velocities)
-            if volume != 0:
-                djacobian[constraint_idx] = djacdt
-                constraint_idx += 1
-
-            # Add face constraints
-            for idx, face in enumerate(cell.faces):
-                if len(face) <= 3:
-                    continue
-                _, _, face_djacdt = cell.face_constraints(
-                    self.positions, self.velocities, idx
-                )
-                djacobian[constraint_idx : constraint_idx + len(face)] = face_djacdt
-                constraint_idx += len(face)
-
-            # Add self intersection constraints TODO
-
-        # Add obstacle collision constrainst TODO
-        return djacobian
 
     def set_external_forces(
         self, vertex_indices: list[int], force: Sequence[float]
@@ -589,7 +430,7 @@ class HydrostatArm3D:
 
         # TODO figure out how to rigorously size the regularization term
         front_inverse = np.linalg.inv(
-            jac @ self.inv_mass_mat @ jac.T + np.eye(len(self.constraints())) * 1e-6
+            jac @ self.inv_mass_mat @ jac.T + np.eye(len(constraint)) * 1e-6
         )
         velocity_term = (
             jac @ self.inv_mass_mat @ self.damping_mat - djac
