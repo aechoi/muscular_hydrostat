@@ -407,18 +407,24 @@ class HydrostatArm3D:
         if not self.odors:
             return
 
-        tip_cell = self.cells[-1]
-        # find gradient using vertex scents
-        points = self.positions[tip_cell.vertices]
-        scents = self.smell(points)
-        gradient = (
-            np.linalg.pinv(np.column_stack((points, np.ones(len(points))))) @ scents
-        )[:-1]
-        gradient = gradient / np.linalg.norm(gradient)
+        forward_backward_gradient = 0
+        for idx, cell in enumerate(self.cells[::-1]):
+            points = self.positions[cell.vertices]
+            scents = self.smell(points)
+            gradient = (
+                np.linalg.pinv(np.column_stack((points, np.ones(len(points))))) @ scents
+            )[:-1]
+            gradient = gradient / np.linalg.norm(gradient)
 
-        forward_backward_gradient = gradient[-1]
-        print(forward_backward_gradient)
-        for cell in self.cells:
+            top_face = cell.faces[-1]
+            normal = np.cross(
+                np.diff(self.positions[top_face[0:2]], axis=0),
+                np.diff(self.positions[top_face[1:3]], axis=0),
+            ).flatten()
+
+            if idx == 0:
+                forward_backward_gradient = np.dot(gradient, normal)
+
             if forward_backward_gradient > 0:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
@@ -429,6 +435,15 @@ class HydrostatArm3D:
                     self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]
                 ]
                 self.set_muscle_actuations(edge_index, -forward_backward_gradient)
+
+            normal = normal / np.linalg.norm(normal)
+            desired_motion = gradient - normal
+            top_centroid = np.average(self.positions[top_face], axis=0)
+            rel_vertices = self.positions[top_face] - top_centroid
+            activations = rel_vertices @ desired_motion
+            edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]]
+            self.muscles[edge_index] += activations
+            self.muscles = np.clip(self.muscles, 0, None)
 
     def active_edge_forces(self) -> np.ndarray:
         """Given the current state of muscle actuations, return the forces
