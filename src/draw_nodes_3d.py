@@ -1,8 +1,8 @@
 import OpenGL.GL as gl
 import OpenGL.GLU as glu
-import OpenGL.GLUT as glut
 import pygame
 import sys
+import time
 
 
 class NodeDrawer3D:
@@ -10,7 +10,11 @@ class NodeDrawer3D:
         self.structure = structure
         self.dt = dt
 
-        pygame.init()
+        # pygame.init()
+        # omit mixer init b/c sound not used and takes long time to load if
+        # there are no outputs
+        pygame.display.init()
+        pygame.joystick.init()
 
         display = (800, 600)
         self.screen = pygame.display.set_mode(display, pygame.DOUBLEBUF | pygame.OPENGL)
@@ -34,6 +38,9 @@ class NodeDrawer3D:
                     sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
+                        simulating = not simulating
+
+                    if event.key == pygame.K_RIGHT:
                         _, _, _ = self.structure.calc_next_states(self.dt)
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
@@ -49,8 +56,13 @@ class NodeDrawer3D:
                 if event.type == pygame.MOUSEWHEEL:
                     gl.glTranslatef(0.0, event.y, 0.0)
 
-            # gl.glRotatef(1, 0, 1, 0)  # orbit view
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+
+            for food in self.structure.food_locations:
+                gl.glPointSize(10.0)
+                gl.glBegin(gl.GL_POINTS)
+                gl.glVertex3fv(food)
+                gl.glEnd()
 
             if simulating:
                 _, _, _ = self.structure.calc_next_states(self.dt)

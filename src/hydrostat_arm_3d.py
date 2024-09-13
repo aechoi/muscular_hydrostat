@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Sequence
 import numpy as np
 import sys
+from scipy import stats
 
 from data_logger import DataLogger
 
@@ -305,6 +306,7 @@ class HydrostatArm3D:
 
         ## Environment parameters
         self.obstacles = []
+        self.food_locations = []
         self.odors = []
 
         ## Simulation variables
@@ -314,7 +316,9 @@ class HydrostatArm3D:
         """Add a ConvexObstacle that could collide with the arm."""
         self.obstacles.append(obstacle)
 
-    def add_odor(self, odor):
+    def add_odor(self, food_loc, covar):
+        odor = lambda coord: stats.multivariate_normal.pdf(coord, food_loc, covar)
+        self.food_locations.append(food_loc)
         self.odors.append(odor)
 
     def smell(self, coordinate):
@@ -421,6 +425,7 @@ class HydrostatArm3D:
                 np.diff(self.positions[top_face[0:2]], axis=0),
                 np.diff(self.positions[top_face[1:3]], axis=0),
             ).flatten()
+            normal = normal / np.linalg.norm(normal)
 
             if idx == 0:
                 forward_backward_gradient = np.dot(gradient, normal)
@@ -429,20 +434,22 @@ class HydrostatArm3D:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
                 ]
-                self.set_muscle_actuations(edge_index, forward_backward_gradient)
+                self.muscles[edge_index] = forward_backward_gradient / 2
+                if idx == 0:
+                    self.muscles[edge_index] = forward_backward_gradient / 4
             else:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]
                 ]
-                self.set_muscle_actuations(edge_index, -forward_backward_gradient)
+                self.muscles[edge_index] = -forward_backward_gradient
 
-            normal = normal / np.linalg.norm(normal)
             desired_motion = gradient - normal
+            desired_motion = desired_motion / np.linalg.norm(desired_motion)
             top_centroid = np.average(self.positions[top_face], axis=0)
             rel_vertices = self.positions[top_face] - top_centroid
             activations = rel_vertices @ desired_motion
             edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]]
-            self.muscles[edge_index] += activations
+            self.muscles[edge_index] += activations * (idx + 1)
             self.muscles = np.clip(self.muscles, 0, None)
 
     def active_edge_forces(self) -> np.ndarray:
