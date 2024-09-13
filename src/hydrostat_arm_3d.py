@@ -263,7 +263,8 @@ class HydrostatArm3D:
         self.edges = []
         for cell in self.cells:
             for edge in cell.edges:
-                if sorted(edge) not in self.edges:
+                edge = sorted(edge)
+                if edge not in self.edges:
                     self.edges.append(edge)
 
         self.num_fixed = 0
@@ -312,6 +313,15 @@ class HydrostatArm3D:
     def add_obstacle(self, obstacle):
         """Add a ConvexObstacle that could collide with the arm."""
         self.obstacles.append(obstacle)
+
+    def add_odor(self, odor):
+        self.odors.append(odor)
+
+    def smell(self, coordinate):
+        scent_strength = 0
+        for odor in self.odors:
+            scent_strength += odor(coordinate)
+        return scent_strength
 
     def calc_constraints(self):
         # Check collisions first, then construct matrices
@@ -391,6 +401,35 @@ class HydrostatArm3D:
         self.muscles[edge_indices] = force
         return self.muscles
 
+    def control_muscles(self):
+        """Set muscle actuations based using controller"""
+        self.muscles = self.muscles * 0
+        if not self.odors:
+            return
+
+        tip_cell = self.cells[-1]
+        # find gradient using vertex scents
+        points = self.positions[tip_cell.vertices]
+        scents = self.smell(points)
+        gradient = (
+            np.linalg.pinv(np.column_stack((points, np.ones(len(points))))) @ scents
+        )[:-1]
+        gradient = gradient / np.linalg.norm(gradient)
+
+        forward_backward_gradient = gradient[-1]
+        print(forward_backward_gradient)
+        for cell in self.cells:
+            if forward_backward_gradient > 0:
+                edge_index = [
+                    self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
+                ]
+                self.set_muscle_actuations(edge_index, forward_backward_gradient)
+            else:
+                edge_index = [
+                    self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]
+                ]
+                self.set_muscle_actuations(edge_index, -forward_backward_gradient)
+
     def active_edge_forces(self) -> np.ndarray:
         """Given the current state of muscle actuations, return the forces
         on each vertex."""
@@ -421,10 +460,9 @@ class HydrostatArm3D:
     def calc_next_states(self, dt):
         self.timestamp += dt
 
-        # constraint = self.constraints()
-        # jac = self.jacobian()
-        # djac = self.jacobian_derivative()
         constraint, jac, djac = self.calc_constraints()
+
+        self.control_muscles()
         active_edge_forces = self.active_edge_forces()
         passive_edge_forces = self.passive_edge_forces()
 

@@ -34,11 +34,7 @@ class NodeDrawer3D:
                     sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
-                        # gl.glRotatef(1, 0, 1, 0)  # orbit view
-                        _, _, _ = self.structure.calc_next_states(0.03)
-                        print(self.structure.constraints())
-                        # print(self.structure.jacobian())
-                        # print(self.structure.jacobian_derivative())
+                        _, _, _ = self.structure.calc_next_states(self.dt)
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 2:
@@ -86,9 +82,10 @@ class NodeDrawer3D:
         gl.glEnd()
 
     def draw_structure(self):
-        gl.glColor3f(1, 1, 1)
         gl.glBegin(gl.GL_LINES)
-        for edge in self.structure.edges:
+        for edge, muscle in zip(self.structure.edges, self.structure.muscles):
+            activation = muscle / (1 + muscle)
+            gl.glColor3f(1, 1 - activation, 1 - activation)
             for vertex in edge:
                 gl.glVertex3fv(self.structure.positions[vertex])
         gl.glEnd()
