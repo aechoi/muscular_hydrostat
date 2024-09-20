@@ -102,6 +102,10 @@ class CubeArm:
                 [1, 5],
                 [2, 6],
                 [3, 7],
+                [0, 6],
+                [1, 7],
+                [2, 4],
+                [3, 5],
                 [4, 5],
                 [5, 6],
                 [6, 7],
@@ -118,14 +122,19 @@ class CubeArm:
                 [4, 5, 6, 7],
             ]
         )
-
+        scale = 1
+        centroid = np.average(base_points, axis=0)
         self.points = base_points.copy()
         new_points = base_points + np.array([0, 0, 1])
         self.points = np.vstack((self.points, new_points))
         self.cells = []
         self.cells.append(Polytope(base_vertices, base_edges, base_faces))
         for level in range(height - 1):
-            new_points = base_points + np.array([0, 0, level + 2])
+            new_points = (
+                (base_points - centroid) * scale**level
+                + centroid
+                + np.array([0, 0, level + 2])
+            )
             self.points = np.vstack((self.points, new_points))
 
             offset = 4 * (level + 1)

@@ -28,6 +28,8 @@ class NodeDrawer3D:
 
         # pygame control parameters
         self.orbiting = False
+        self.panning = False
+        self.control_mod = False
 
     def main_loop(self, simulating=True):
         while self.running:
@@ -37,22 +39,46 @@ class NodeDrawer3D:
                     pygame.quit()
                     sys.exit()
                 if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LCTRL:
+                        self.control_mod = True
+                        if self.orbiting:
+                            self.orbiting = False
+                            self.panning = True
                     if event.key == pygame.K_SPACE:
                         simulating = not simulating
 
                     if event.key == pygame.K_RIGHT:
                         _, _, _ = self.structure.calc_next_states(self.dt)
 
+                    # if event.key == pygame.K_LEFT:
+                    #     _, _, _ = self.structure.calc_next_states(-self.dt)
+                if event.type == pygame.KEYUP:
+                    if event.key == pygame.K_LCTRL:
+                        self.control_mod = False
+                        if self.panning:
+                            self.orbiting = True
+                            self.panning = False
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 2:
-                        self.orbiting = True
+                    if self.control_mod:
+                        if event.button == 2:
+                            self.panning = True
+                    else:
+                        if event.button == 2:
+                            self.orbiting = True
                 if event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 2:
-                        self.orbiting = False
+                    if self.control_mod:
+                        if event.button == 2:
+                            self.panning = False
+                    else:
+                        if event.button == 2:
+                            self.orbiting = False
                 if event.type == pygame.MOUSEMOTION:
                     if self.orbiting:
                         gl.glRotatef(event.rel[0], 0, 0, 1)
                         # gl.glRotatef(event.rel[1], 1, 0, 0)
+                    if self.panning:
+                        gl.glTranslatef(0, 0, -event.rel[1] / 200)
                 if event.type == pygame.MOUSEWHEEL:
                     gl.glTranslatef(0.0, event.y, 0.0)
 
@@ -60,6 +86,7 @@ class NodeDrawer3D:
 
             for food in self.structure.food_locations:
                 gl.glPointSize(10.0)
+                gl.glColor3f(0, 1, 1)
                 gl.glBegin(gl.GL_POINTS)
                 gl.glVertex3fv(food)
                 gl.glEnd()
@@ -68,9 +95,11 @@ class NodeDrawer3D:
                 _, _, _ = self.structure.calc_next_states(self.dt)
             self.draw_structure()
 
+            self.draw_obstacles()
+
             self.draw_axes()
             actual_fps = self.clock.get_fps()
-            # print("Actual FPS:", actual_fps)
+            print("Actual FPS:", actual_fps)
             # print("positions:", self.structure.positions)
 
             pygame.display.flip()
@@ -100,4 +129,13 @@ class NodeDrawer3D:
             gl.glColor3f(1, 1 - activation, 1 - activation)
             for vertex in edge:
                 gl.glVertex3fv(self.structure.positions[vertex])
+        gl.glEnd()
+
+    def draw_obstacles(self):
+        gl.glBegin(gl.GL_LINES)
+        gl.glColor3f(1, 0, 1)
+        for obstacle in self.structure.obstacles:
+            for edge in obstacle.edges:
+                for vertex in edge:
+                    gl.glVertex3fv(obstacle.vertices[vertex])
         gl.glEnd()

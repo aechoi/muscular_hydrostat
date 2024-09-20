@@ -7,6 +7,14 @@ from scipy import stats
 from data_logger import DataLogger
 
 
+def get_vec_indices(vertex_indices: list):
+    """Return the list of indices that correspond to the vertex indices."""
+    if type(vertex_indices) is int:
+        vertex_indices = [vertex_indices]
+    vertex_indices = np.array(vertex_indices)
+    return (vertex_indices[:, None] * 3 + np.arange(3)[None, :]).flatten()
+
+
 @dataclass
 class HydrostatCell3D:
     """Defines cell relations"""
@@ -69,15 +77,15 @@ class HydrostatCell3D:
             cofactors = (
                 np.linalg.det(relative_positions) * np.linalg.inv(relative_positions).T
             )
-            jacobian[self.get_vec_indices([0])] -= np.sum(cofactors, axis=0)
-            jacobian[self.get_vec_indices(triangle)] += cofactors.flatten()
+            jacobian[get_vec_indices([0])] -= np.sum(cofactors, axis=0)
+            jacobian[get_vec_indices(triangle)] += cofactors.flatten()
 
             dcofactors = np.trace(cofactors.T @ relative_velocities) * np.linalg.inv(
                 relative_positions
             ) - cofactors.T @ relative_velocities @ np.linalg.inv(relative_positions)
             dcofactors = dcofactors.T
-            djacdt[self.get_vec_indices([0])] -= np.sum(dcofactors, axis=0)
-            djacdt[self.get_vec_indices(triangle)] += dcofactors.flatten()
+            djacdt[get_vec_indices([0])] -= np.sum(dcofactors, axis=0)
+            djacdt[get_vec_indices(triangle)] += dcofactors.flatten()
 
         return volume, jacobian, djacdt
 
@@ -101,7 +109,7 @@ class HydrostatCell3D:
             cov, dcdp, dcdt, ddcdpdt
         )
 
-        indices = self.get_vec_indices(self.faces[face_idx])
+        indices = get_vec_indices(self.faces[face_idx])
         constraints = centered_points @ normal
 
         dPdP = np.zeros((N, N, D, D))
@@ -228,12 +236,12 @@ class HydrostatCell3D:
     #     )
     #     np.where(intersect > 0)[0]
 
-    def get_vec_indices(self, vertex_indices: list):
-        """Return the list of indices that correspond to the vertex indices."""
-        if type(vertex_indices) is int:
-            vertex_indices = [vertex_indices]
-        vertex_indices = np.array(vertex_indices)
-        return (vertex_indices[:, None] * 3 + np.arange(3)[None, :]).flatten()
+    # def get_vec_indices(self, vertex_indices: list):
+    #     """Return the list of indices that correspond to the vertex indices."""
+    #     if type(vertex_indices) is int:
+    #         vertex_indices = [vertex_indices]
+    #     vertex_indices = np.array(vertex_indices)
+    #     return (vertex_indices[:, None] * 3 + np.arange(3)[None, :]).flatten()
 
     def calc_next_states(self, dt):
         pass
@@ -291,8 +299,8 @@ class HydrostatArm3D:
             for vertex, mass, damper in zip(
                 cell.vertices, cell.masses, cell.vertex_damping
             ):
-                indices = cell.get_vec_indices(vertex)
-                self.inv_mass_mat[indices, indices] = mass
+                indices = get_vec_indices(vertex)
+                self.inv_mass_mat[indices, indices] = 1 / mass
                 self.damping_mat[indices, indices] = damper
         # TODO get edge damping rates from cell info and check for contradiction
         self.edge_damping = [1] * len(self.edges)
@@ -308,6 +316,7 @@ class HydrostatArm3D:
         self.obstacles = []
         self.food_locations = []
         self.odors = []
+        self.scent_grid = None
 
         ## Simulation variables
         self.timestamp = 0
@@ -316,10 +325,10 @@ class HydrostatArm3D:
         """Add a ConvexObstacle that could collide with the arm."""
         self.obstacles.append(obstacle)
 
-    def add_odor(self, food_loc, covar):
-        odor = lambda coord: stats.multivariate_normal.pdf(coord, food_loc, covar)
-        self.food_locations.append(food_loc)
-        self.odors.append(odor)
+    # def add_odor(self, food_loc, covar):
+    #     odor = lambda coord: stats.multivariate_normal.pdf(coord, food_loc, covar)
+    #     self.food_locations.append(food_loc)
+    #     self.odors.append(odor)
 
     def smell(self, coordinate):
         scent_strength = 0
@@ -329,9 +338,16 @@ class HydrostatArm3D:
 
     def calc_constraints(self):
         # Check collisions first, then construct matrices
-        num_collisions = 0
+        collisions = []
+        for idx, point in enumerate(self.positions):
+            for obstacle in self.obstacles:
+                if obstacle.check_intersection(point):
+                    nearest_point = obstacle.nearest_point(point)
+                    collisions.append(
+                        {"constraint": point - nearest_point, "index": idx}
+                    )
         constraints = np.zeros(
-            num_collisions
+            len(collisions) * 3
             + self.num_fixed * 3
             + len(self.cells)
             + self.num_face_vertices
@@ -340,6 +356,13 @@ class HydrostatArm3D:
         djacdts = np.zeros((len(constraints), len(self.position_vector)))
 
         constraint_idx = 0
+        for collision in collisions:
+            pos_indices = get_vec_indices(collision["index"])
+            constraint_indices = get_vec_indices(constraint_idx)
+            constraints[constraint_indices] = collision["constraint"]
+            jacobians[constraint_indices, pos_indices] = 1
+            constraint_idx += 3
+
         for cell_idx, cell in enumerate(self.cells):
             # Add boundary constraints
             for idx in cell.fixed_indices:
@@ -412,9 +435,16 @@ class HydrostatArm3D:
             return
 
         forward_backward_gradient = 0
+        # strength_scales = (len(self.cells) - np.arange(len(self.cells))[::-1]) ** 2
+        # strength_scales = np.arange(len(self.cells)) + 1
+        # strength_scales = strength_scales / np.sum(strength_scales)
+        strength_scales = np.array([10, 4, 1.6, 0.64, 0.25])[::-1] * 2
         for idx, cell in enumerate(self.cells[::-1]):
+            strength_scale = strength_scales[idx]
+
             points = self.positions[cell.vertices]
             scents = self.smell(points)
+
             gradient = (
                 np.linalg.pinv(np.column_stack((points, np.ones(len(points))))) @ scents
             )[:-1]
@@ -434,22 +464,24 @@ class HydrostatArm3D:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
                 ]
-                self.muscles[edge_index] = forward_backward_gradient / 2
+                self.muscles[edge_index] = forward_backward_gradient / 4
                 if idx == 0:
-                    self.muscles[edge_index] = forward_backward_gradient / 4
+                    self.muscles[edge_index] = forward_backward_gradient / 6
             else:
                 edge_index = [
-                    self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]
+                    self.edges.index(sorted(edge)) for edge in cell.edges[4:-8]
                 ]
                 self.muscles[edge_index] = -forward_backward_gradient
 
             desired_motion = gradient - normal
-            desired_motion = desired_motion / np.linalg.norm(desired_motion)
+            # desired_motion = desired_motion / np.linalg.norm(desired_motion)
             top_centroid = np.average(self.positions[top_face], axis=0)
             rel_vertices = self.positions[top_face] - top_centroid
             activations = rel_vertices @ desired_motion
-            edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[4:-4]]
-            self.muscles[edge_index] += activations * (idx + 1)
+            edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[4:-8]]
+            self.muscles[edge_index] += activations * strength_scale * 2
+            edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[8:-4]]
+            self.muscles[edge_index] += activations * strength_scale * 1
             self.muscles = np.clip(self.muscles, 0, None)
 
     def active_edge_forces(self) -> np.ndarray:
