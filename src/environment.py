@@ -82,7 +82,7 @@ class Environment3D:
 
     def sample_scent(self, coordinate):
         indices = self.coord_to_idx(coordinate)
-        return self.concentration[*indices]
+        return self.concentration[*indices.T]
 
     def calc_obstacle_masks(self):
         obstacle_mask = np.zeros_like(self.concentration)

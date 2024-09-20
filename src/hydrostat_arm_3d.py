@@ -236,13 +236,6 @@ class HydrostatCell3D:
     #     )
     #     np.where(intersect > 0)[0]
 
-    # def get_vec_indices(self, vertex_indices: list):
-    #     """Return the list of indices that correspond to the vertex indices."""
-    #     if type(vertex_indices) is int:
-    #         vertex_indices = [vertex_indices]
-    #     vertex_indices = np.array(vertex_indices)
-    #     return (vertex_indices[:, None] * 3 + np.arange(3)[None, :]).flatten()
-
     def calc_next_states(self, dt):
         pass
 
@@ -256,6 +249,8 @@ class HydrostatArm3D:
 
     constraint_spring: float = 500
     constraint_damper: float = 10
+
+    environment = None
 
     def __post_init__(self):
         ## Arm geometry
@@ -314,27 +309,18 @@ class HydrostatArm3D:
 
         ## Environment parameters
         self.obstacles = []
-        self.food_locations = []
-        self.odors = []
-        self.scent_grid = None
+        if self.environment is not None:
+            self.obstacles = self.environment.obstacles
 
         ## Simulation variables
         self.timestamp = 0
 
-    def add_obstacle(self, obstacle):
-        """Add a ConvexObstacle that could collide with the arm."""
-        self.obstacles.append(obstacle)
-
-    # def add_odor(self, food_loc, covar):
-    #     odor = lambda coord: stats.multivariate_normal.pdf(coord, food_loc, covar)
-    #     self.food_locations.append(food_loc)
-    #     self.odors.append(odor)
+    def set_environment(self, environment):
+        self.environment = environment
+        self.obstacles = environment.obstacles
 
     def smell(self, coordinate):
-        scent_strength = 0
-        for odor in self.odors:
-            scent_strength += odor(coordinate)
-        return scent_strength
+        return self.environment.sample_scent(coordinate)
 
     def calc_constraints(self):
         # Check collisions first, then construct matrices
@@ -406,7 +392,6 @@ class HydrostatArm3D:
                 constraint_idx += len(face)
 
             # TODO Self Intersection
-            # TODO Obstacle Collisions
         return constraints, jacobians, djacdts
 
     def set_external_forces(
@@ -431,14 +416,15 @@ class HydrostatArm3D:
     def control_muscles(self):
         """Set muscle actuations based using controller"""
         self.muscles = self.muscles * 0
-        if not self.odors:
+        if self.environment is None:
             return
 
         forward_backward_gradient = 0
         # strength_scales = (len(self.cells) - np.arange(len(self.cells))[::-1]) ** 2
         # strength_scales = np.arange(len(self.cells)) + 1
         # strength_scales = strength_scales / np.sum(strength_scales)
-        strength_scales = np.array([10, 4, 1.6, 0.64, 0.25])[::-1] * 2
+        strength_scales = np.array([25, 10, 4, 1.6, 0.64, 0.25])[::-1]
+        strength_scales = np.array([25, 10, 4, 1.6, 1, 0.25])[::-1]
         for idx, cell in enumerate(self.cells[::-1]):
             strength_scale = strength_scales[idx]
 
@@ -464,9 +450,9 @@ class HydrostatArm3D:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
                 ]
-                self.muscles[edge_index] = forward_backward_gradient / 4
+                self.muscles[edge_index] = forward_backward_gradient / 1.5
                 if idx == 0:
-                    self.muscles[edge_index] = forward_backward_gradient / 6
+                    self.muscles[edge_index] = forward_backward_gradient / 3
             else:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[4:-8]

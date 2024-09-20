@@ -84,12 +84,13 @@ class NodeDrawer3D:
 
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
-            for food in self.structure.food_locations:
-                gl.glPointSize(10.0)
-                gl.glColor3f(0, 1, 1)
-                gl.glBegin(gl.GL_POINTS)
-                gl.glVertex3fv(food)
-                gl.glEnd()
+            if self.structure.environment is not None:
+                for food in self.structure.environment.food_locs:
+                    gl.glPointSize(10.0)
+                    gl.glColor3f(0, 1, 1)
+                    gl.glBegin(gl.GL_POINTS)
+                    gl.glVertex3fv(food)
+                    gl.glEnd()
 
             if simulating:
                 _, _, _ = self.structure.calc_next_states(self.dt)
@@ -129,6 +130,15 @@ class NodeDrawer3D:
             gl.glColor3f(1, 1 - activation, 1 - activation)
             for vertex in edge:
                 gl.glVertex3fv(self.structure.positions[vertex])
+        gl.glEnd()
+
+        gl.glPointSize(10.0)
+        gl.glBegin(gl.GL_POINTS)
+        scents = self.structure.smell(self.structure.positions)
+        max_scent = max(scents)
+        for vertex, scent in zip(self.structure.positions, scents):
+            gl.glColor3f(1, 1 - scent / max_scent, 1 - scent / max_scent)
+            gl.glVertex3fv(vertex)
         gl.glEnd()
 
     def draw_obstacles(self):
