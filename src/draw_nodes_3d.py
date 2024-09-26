@@ -92,15 +92,22 @@ class NodeDrawer3D:
                     gl.glVertex3fv(food)
                     gl.glEnd()
 
+            sim_start = time.perf_counter()
             if simulating:
                 _, _, _ = self.structure.calc_next_states(self.dt)
+            sim_end = time.perf_counter()
             self.draw_structure()
 
             self.draw_obstacles()
 
             self.draw_axes()
             actual_fps = self.clock.get_fps()
-            # print("Actual FPS:", actual_fps)
+            loop_period = 0
+            if actual_fps > 0:
+                loop_period = 1 / actual_fps * 1000
+            print(
+                f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
+            )
             # print("positions:", self.structure.positions)
 
             pygame.display.flip()

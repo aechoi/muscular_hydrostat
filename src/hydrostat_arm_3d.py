@@ -3,6 +3,7 @@ from typing import Sequence
 import numpy as np
 import sys
 from scipy import stats
+import time
 
 from data_logger import DataLogger
 
@@ -457,11 +458,8 @@ class HydrostatArm3D:
             return
 
         forward_backward_gradient = 0
-        # strength_scales = (len(self.cells) - np.arange(len(self.cells))[::-1]) ** 2
-        # strength_scales = np.arange(len(self.cells)) + 1
-        # strength_scales = strength_scales / np.sum(strength_scales)
-        strength_scales = np.array([25, 10, 4, 1.6, 0.64, 0.25])[::-1]
-        # strength_scales = np.array([25, 10, 4, 1.6, 1, 0.25])[::-1]
+        strength_scales = np.logspace(-1, 2, len(self.cells), base=4.5)
+
         for idx, cell in enumerate(self.cells[::-1]):
             strength_scale = strength_scales[idx]
 
@@ -480,15 +478,13 @@ class HydrostatArm3D:
             ).flatten()
             normal = normal / np.linalg.norm(normal)
 
-            # if idx == 0:
-            # forward_backward_gradient = np.dot(gradient, normal)
             forward_backward_gradient = np.dot(gradient, normal)
 
             if forward_backward_gradient > 0:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
                 ]
-                self.muscles[edge_index] = forward_backward_gradient / 2
+                self.muscles[edge_index] = forward_backward_gradient / 1.5
                 # if idx == 0:
                 #     self.muscles[edge_index] = forward_backward_gradient / 2
             else:
@@ -503,9 +499,9 @@ class HydrostatArm3D:
             rel_vertices = self.positions[top_face] - top_centroid
             activations = rel_vertices @ desired_motion
             edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[4:-8]]
-            self.muscles[edge_index] += activations * strength_scale * 2
+            self.muscles[edge_index] += activations * strength_scale * 4
             edge_index = [self.edges.index(sorted(edge)) for edge in cell.edges[8:-4]]
-            self.muscles[edge_index] += activations * strength_scale * 1
+            self.muscles[edge_index] += activations * strength_scale * 2
             self.muscles = np.clip(self.muscles, 0, None)
 
     def active_edge_forces(self) -> np.ndarray:
