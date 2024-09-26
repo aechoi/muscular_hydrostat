@@ -100,7 +100,7 @@ class NodeDrawer3D:
 
             self.draw_axes()
             actual_fps = self.clock.get_fps()
-            print("Actual FPS:", actual_fps)
+            # print("Actual FPS:", actual_fps)
             # print("positions:", self.structure.positions)
 
             pygame.display.flip()

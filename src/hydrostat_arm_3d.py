@@ -323,7 +323,9 @@ class HydrostatArm3D:
         return self.environment.sample_scent(coordinate)
 
     def calc_constraints(self):
-        # Check collisions first, then construct matrices
+        ## Calculate variable length constraints first.
+
+        # Obstacles
         collisions = []
         for idx, point in enumerate(self.positions):
             for obstacle in self.obstacles:
@@ -332,8 +334,25 @@ class HydrostatArm3D:
                     collisions.append(
                         {"constraint": point - nearest_point, "index": idx}
                     )
+
+        # Edge length. No edge less than minimum edge length
+        short_edges = []
+        min_edge_length = 0.4
+        for edge in self.edges:
+            edge_length = np.linalg.norm(np.diff(self.positions[edge], axis=0))
+            if edge_length < min_edge_length:
+                short_edges.append(
+                    {
+                        "constraint": edge_length - min_edge_length - 0.01,
+                        "edge": edge,
+                        "edge_length": edge_length,
+                    }
+                )
+
+        ## Instantiate constraint matrices
         constraints = np.zeros(
             len(collisions) * 3
+            + len(short_edges)
             + self.num_fixed * 3
             + len(self.cells)
             + self.num_face_vertices
@@ -348,6 +367,24 @@ class HydrostatArm3D:
             constraints[constraint_indices] = collision["constraint"]
             jacobians[constraint_indices, pos_indices] = 1
             constraint_idx += 3
+
+        for short_edge in short_edges:
+            pos_indices = get_vec_indices(short_edge["edge"])
+
+            constraints[constraint_idx] = short_edge["constraint"]
+
+            points = self.positions[short_edge["edge"]]
+            norm_dif = (points[0] - points[1]) / short_edge["edge_length"]
+            jacobians[constraint_idx, pos_indices[:3]] = norm_dif
+            jacobians[constraint_idx, pos_indices[3:]] = -norm_dif
+
+            velocities = self.velocities[short_edge["edge"]]
+            norm_dif = velocities[0] - velocities[1] / np.linalg.norm(
+                velocities, axis=0
+            )
+            djacdts[constraint_idx, pos_indices[:3]] = norm_dif
+            djacdts[constraint_idx, pos_indices[3:]] = -norm_dif
+            constraint_idx += 1
 
         for cell_idx, cell in enumerate(self.cells):
             # Add boundary constraints
@@ -424,7 +461,7 @@ class HydrostatArm3D:
         # strength_scales = np.arange(len(self.cells)) + 1
         # strength_scales = strength_scales / np.sum(strength_scales)
         strength_scales = np.array([25, 10, 4, 1.6, 0.64, 0.25])[::-1]
-        strength_scales = np.array([25, 10, 4, 1.6, 1, 0.25])[::-1]
+        # strength_scales = np.array([25, 10, 4, 1.6, 1, 0.25])[::-1]
         for idx, cell in enumerate(self.cells[::-1]):
             strength_scale = strength_scales[idx]
 
@@ -443,16 +480,17 @@ class HydrostatArm3D:
             ).flatten()
             normal = normal / np.linalg.norm(normal)
 
-            if idx == 0:
-                forward_backward_gradient = np.dot(gradient, normal)
+            # if idx == 0:
+            # forward_backward_gradient = np.dot(gradient, normal)
+            forward_backward_gradient = np.dot(gradient, normal)
 
             if forward_backward_gradient > 0:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[-4:]
                 ]
-                self.muscles[edge_index] = forward_backward_gradient / 1.5
-                if idx == 0:
-                    self.muscles[edge_index] = forward_backward_gradient / 3
+                self.muscles[edge_index] = forward_backward_gradient / 2
+                # if idx == 0:
+                #     self.muscles[edge_index] = forward_backward_gradient / 2
             else:
                 edge_index = [
                     self.edges.index(sorted(edge)) for edge in cell.edges[4:-8]

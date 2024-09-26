@@ -90,7 +90,9 @@ class Environment3D:
             obstacle_mask += obstacle.calc_many_intersections(self.grid_points).reshape(
                 self.concentration.shape
             )
-        obstacle_mask = np.clip(obstacle_mask, 0, 1)
+        obstacle_mask = np.clip(obstacle_mask, 0, 1).transpose(
+            1, 0, 2
+        )  # not sure why not reshaping properly
         adjacency_kernel = np.array(
             [
                 [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
