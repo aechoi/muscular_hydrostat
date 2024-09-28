@@ -4,8 +4,17 @@ import numpy as np
 import sys
 from scipy import stats
 import time
+import logging
 
 from data_logger import DataLogger
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    filename="log.log",
+    filemode="w",
+    format="%(asctime)s %(levelname)s: %(message)s",
+    level=logging.DEBUG,
+)
 
 
 def get_vec_indices(vertex_indices: list):
@@ -90,155 +99,170 @@ class HydrostatCell3D:
 
         return volume, jacobian, djacdt
 
-    def face_constraints(self, positions, velocities, face_idx):
-        """Calculate the constraint vector, Jacobian, and Jacobian time
-        derivative for maintaining face planarity constraints."""
-        points = positions[self.faces[face_idx]]
-        dpointsdt = velocities[self.faces[face_idx]]
-        N = len(points)
-        D = len(points[0])
 
-        centroid = np.average(points, axis=0)
-        dcentroiddt = np.average(dpointsdt, axis=0)
-        centered_points = points - centroid
-        centered_velocities = dpointsdt - dcentroiddt
+def calc_face_constraints(positions, velocities, face_indices):
+    """Calculate the constraint vector, Jacobian, and Jacobian time
+    derivative for maintaining face planarity constraints."""
 
-        cov, dcdp, dcdt, ddcdpdt = self.calc_covariance_variables(
-            centered_points, centered_velocities
-        )
-        normal, dndp, dndt, ddndpdt = self.calc_normal_variables(
-            cov, dcdp, dcdt, ddcdpdt
-        )
+    logger.debug("start face constraint calculations")
+    last_time = time.perf_counter()
+    points = positions[face_indices]
+    dpointsdt = velocities[face_indices]
+    N = len(points)
+    D = len(points[0])
 
-        indices = get_vec_indices(self.faces[face_idx])
-        constraints = centered_points @ normal
+    centroid = np.average(points, axis=0)
+    dcentroiddt = np.average(dpointsdt, axis=0)
+    centered_points = points - centroid
+    centered_velocities = dpointsdt - dcentroiddt
 
-        dPdP = np.zeros((N, N, D, D))
-        dPdP[np.arange(N), np.arange(N), :, :] = np.eye(D)
-        dcentereddP = dPdP - np.eye(D)[None, None, :, :] / N
-        jacobian = np.zeros((N, positions.size))
-        jacobian[:, indices] = (
-            dcentereddP @ normal + np.einsum("ij,klj->ikl", centered_points, dndp)
-        ).reshape(N, -1)
+    logger.debug(f"[{time.perf_counter() - last_time}] calc setup")
+    last_time = time.perf_counter()
 
-        djacdt = np.zeros((N, positions.size))
-        djacdt[:, indices] = (
-            dcentereddP @ dndt
-            + np.einsum("ij,klj->ikl", centered_velocities, dndp)
-            + np.einsum("ij,klj->ikl", centered_points, ddndpdt)
-        ).reshape(N, -1)
+    cov, dcdp, dcdt, ddcdpdt = calc_covariance_variables(
+        centered_points, centered_velocities
+    )
+    logger.debug(f"[{time.perf_counter() - last_time}] covar calcs")
+    last_time = time.perf_counter()
 
-        return constraints, jacobian, djacdt
+    normal, dndp, dndt, ddndpdt = calc_normal_variables(cov, dcdp, dcdt, ddcdpdt)
+    logger.debug(f"[{time.perf_counter() - last_time}] normal calcs")
+    last_time = time.perf_counter()
 
-    def calc_covariance_variables(self, centered_points, centered_velocities):
-        N = len(centered_points)
+    indices = get_vec_indices(face_indices)
+    constraints = centered_points @ normal
 
-        cov = np.cov(centered_points.T)
+    dPdP = np.zeros((N, N, D, D))
+    dPdP[np.arange(N), np.arange(N), :, :] = np.eye(D)
+    dcentereddP = dPdP - np.eye(D)[None, None, :, :] / N
+    jacobian = np.zeros((N, positions.size))
+    jacobian[:, indices] = (
+        dcentereddP @ normal + np.einsum("ij,klj->ikl", centered_points, dndp)
+    ).reshape(N, -1)
 
-        # dCdP
-        units = np.expand_dims(np.eye(3), (0, 2))
-        points_tensor = np.expand_dims(centered_points, (1, 3))
-        dcdp_single = points_tensor @ units
-        dcdp = 1 / (N - 1) * (dcdp_single.transpose(0, 1, 3, 2) + dcdp_single)
+    djacdt = np.zeros((N, positions.size))
+    djacdt[:, indices] = (
+        dcentereddP @ dndt
+        + np.einsum("ij,klj->ikl", centered_velocities, dndp)
+        + np.einsum("ij,klj->ikl", centered_points, ddndpdt)
+    ).reshape(N, -1)
+    logger.debug(f"[{time.perf_counter() - last_time}] assembly calcs")
+    last_time = time.perf_counter()
 
-        # dCdt
-        dcdt_single = np.einsum("ij,ik->jk", centered_velocities, centered_points)
-        dcdt = 1 / (N - 1) * (dcdt_single + dcdt_single.T)
+    return constraints, jacobian, djacdt
 
-        # ddCdPdt
-        velocity_tensor = np.expand_dims(centered_velocities, (1, 3))
-        ddcdpdt_single = velocity_tensor @ units
-        ddcdpdt = 1 / (N - 1) * (ddcdpdt_single.transpose(0, 1, 3, 2) + ddcdpdt_single)
 
-        return cov, dcdp, dcdt, ddcdpdt
+def calc_covariance_variables(centered_points, centered_velocities):
+    N = len(centered_points)
 
-    def calc_normal_variables(self, cov, dcdp, dcdt, ddcdpdt):
-        eigvals, eigvecs = np.linalg.eigh(cov)
-        min_eigvec = eigvecs[:, np.argmin(eigvals)]
+    cov = np.cov(centered_points.T)
 
-        normal = min_eigvec
+    # dCdP
+    units = np.expand_dims(np.eye(3), (0, 2))
+    points_tensor = np.expand_dims(centered_points, (1, 3))
+    dcdp_single = points_tensor @ units
+    dcdp = 1 / (N - 1) * (dcdp_single.transpose(0, 1, 3, 2) + dcdp_single)
 
-        # dNdP
-        eigval_dif = eigvals[:, None] - eigvals
-        eigval_dif = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
-        dndp = np.einsum(
+    # dCdt
+    dcdt_single = np.einsum("ij,ik->jk", centered_velocities, centered_points)
+    dcdt = 1 / (N - 1) * (dcdt_single + dcdt_single.T)
+
+    # ddCdPdt
+    velocity_tensor = np.expand_dims(centered_velocities, (1, 3))
+    ddcdpdt_single = velocity_tensor @ units
+    ddcdpdt = 1 / (N - 1) * (ddcdpdt_single.transpose(0, 1, 3, 2) + ddcdpdt_single)
+
+    return cov, dcdp, dcdt, ddcdpdt
+
+
+def calc_normal_variables(cov, dcdp, dcdt, ddcdpdt):
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    min_eigvec = eigvecs[:, np.argmin(eigvals)]
+
+    normal = min_eigvec
+
+    # dNdP
+    eigval_dif = eigvals[:, None] - eigvals
+    eigval_dif = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
+    dndp = np.einsum(
+        "ijkl,lk,mk->ijm",
+        eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+        min_eigvec.reshape(-1, 1),
+        eigvecs,
+    )
+
+    dvdts = (-eigval_dif * (eigvecs.T @ dcdt @ eigvecs))[:, :, None] * eigvecs.T[
+        :, None, :
+    ]
+    dvdts = np.sum(dvdts, axis=0).T
+    dndt = dvdts[:, 0]
+
+    dldts = np.einsum("ij,ji->i", eigvecs.T @ dcdt, eigvecs)
+
+    deigval_difdt = dldts[:, None] - dldts
+    deigval_difdt = -np.divide(
+        deigval_difdt,
+        (eigvals[:, None] - eigvals) ** 2,
+        out=deigval_difdt,
+        where=deigval_difdt != 0,
+    )
+
+    ddndpdt = (
+        np.einsum(
             "ijkl,lk,mk->ijm",
-            eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+            deigval_difdt[0][:, None] * eigvecs.T @ dcdp,
             min_eigvec.reshape(-1, 1),
             eigvecs,
         )
-
-        dvdts = (-eigval_dif * (eigvecs.T @ dcdt @ eigvecs))[:, :, None] * eigvecs.T[
-            :, None, :
-        ]
-        dvdts = np.sum(dvdts, axis=0).T
-        dndt = dvdts[:, 0]
-
-        dldts = np.einsum("ij,ji->i", eigvecs.T @ dcdt, eigvecs)
-
-        deigval_difdt = dldts[:, None] - dldts
-        deigval_difdt = -np.divide(
-            deigval_difdt,
-            (eigvals[:, None] - eigvals) ** 2,
-            out=deigval_difdt,
-            where=deigval_difdt != 0,
+        + np.einsum(
+            "ijkl,lk,mk->ijm",
+            eigval_dif[0][:, None] * dvdts.T @ dcdp,
+            min_eigvec.reshape(-1, 1),
+            eigvecs,
         )
-
-        ddndpdt = (
-            np.einsum(
-                "ijkl,lk,mk->ijm",
-                deigval_difdt[0][:, None] * eigvecs.T @ dcdp,
-                min_eigvec.reshape(-1, 1),
-                eigvecs,
-            )
-            + np.einsum(
-                "ijkl,lk,mk->ijm",
-                eigval_dif[0][:, None] * dvdts.T @ dcdp,
-                min_eigvec.reshape(-1, 1),
-                eigvecs,
-            )
-            + np.einsum(
-                "ijkl,lk,mk->ijm",
-                eigval_dif[0][:, None] * eigvecs.T @ ddcdpdt,
-                min_eigvec.reshape(-1, 1),
-                eigvecs,
-            )
-            + np.einsum(
-                "ijkl,lk,mk->ijm",
-                eigval_dif[0][:, None] * eigvecs.T @ dcdp,
-                dvdts[:, 0].reshape(-1, 1),
-                eigvecs,
-            )
-            + np.einsum(
-                "ijkl,lk,mk->ijm",
-                eigval_dif[0][:, None] * eigvecs.T @ dcdp,
-                min_eigvec.reshape(-1, 1),
-                dvdts,
-            )
+        + np.einsum(
+            "ijkl,lk,mk->ijm",
+            eigval_dif[0][:, None] * eigvecs.T @ ddcdpdt,
+            min_eigvec.reshape(-1, 1),
+            eigvecs,
         )
+        + np.einsum(
+            "ijkl,lk,mk->ijm",
+            eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+            dvdts[:, 0].reshape(-1, 1),
+            eigvecs,
+        )
+        + np.einsum(
+            "ijkl,lk,mk->ijm",
+            eigval_dif[0][:, None] * eigvecs.T @ dcdp,
+            min_eigvec.reshape(-1, 1),
+            dvdts,
+        )
+    )
 
-        return normal, dndp, dndt, ddndpdt
+    return normal, dndp, dndt, ddndpdt
 
-    # def self_intersection_constraint(self, positions, velocities):
-    #     """return the constraints, jacobian, and jacobian time derivative for
-    #     cell points intersecting the cell edges"""
-    #     points = positions[self.vertices]
-    #     print(points)
-    #     # face vertices are ordered counter clockwise from outside
-    #     constraints = []
-    #     normals = np.zeros((len(self.faces), 3))
-    #     centroids = np.zeros_like(normals)
-    #     for idx, face in enumerate(self.faces):
-    #         face_points = positions[face]
-    #         centroids[idx] = np.average(face_points, axis=0)
-    #         normals[idx] = np.cross(*(face_points - centroids[idx])[:2])
-    #     intersect = np.einsum(
-    #         "ijk,jk->ij", points[:, None, :] - centroids[None, :, :], normals
-    #     )
-    #     np.where(intersect > 0)[0]
 
-    def calc_next_states(self, dt):
-        pass
+# # def self_intersection_constraint(self, positions, velocities):
+# #     """return the constraints, jacobian, and jacobian time derivative for
+# #     cell points intersecting the cell edges"""
+# #     points = positions[self.vertices]
+# #     print(points)
+# #     # face vertices are ordered counter clockwise from outside
+# #     constraints = []
+# #     normals = np.zeros((len(self.faces), 3))
+# #     centroids = np.zeros_like(normals)
+# #     for idx, face in enumerate(self.faces):
+# #         face_points = positions[face]
+# #         centroids[idx] = np.average(face_points, axis=0)
+# #         normals[idx] = np.cross(*(face_points - centroids[idx])[:2])
+# #     intersect = np.einsum(
+# #         "ijk,jk->ij", points[:, None, :] - centroids[None, :, :], normals
+# #     )
+# #     np.where(intersect > 0)[0]
+
+# def calc_next_states(self, dt):
+#     pass
 
 
 @dataclass
@@ -259,30 +283,34 @@ class HydrostatArm3D:
         self.positions_init = self.positions.copy()
         self.velocities = np.zeros_like(self.positions)  # nxd array of point velocities
 
-        # numpy quirk, ravel creates a view rather than a copy, so changing one
+        # ravel creates a view rather than a copy, so changing one
         # of the below changes the original points/velocities arrays and vice
         # versa. Essentially a built in automatic setter!
         self.position_vector = np.ravel(self.positions)
         self.velocity_vector = np.ravel(self.velocities)
 
+        self.num_fixed = 0
+        self.num_face_vertices = 0
+        self.init_volumes = []
         self.edges = []
+        self.faces = []
         for cell in self.cells:
+            self.num_fixed += len(cell.fixed_indices)
+            init_volume, _, _ = cell.volume_constraints(
+                self.positions_init, self.velocities
+            )
+            self.init_volumes.append(init_volume)
+
             for edge in cell.edges:
                 edge = sorted(edge)
                 if edge not in self.edges:
                     self.edges.append(edge)
 
-        self.num_fixed = 0
-        self.num_face_vertices = 0
-        self.init_volumes = []
-        for cell in self.cells:
-            self.num_fixed += len(cell.fixed_indices)
             for face in cell.faces:
-                self.num_face_vertices += len(face)
-            init_volume, _, _ = cell.volume_constraints(
-                self.positions_init, self.velocities
-            )
-            self.init_volumes.append(init_volume)
+                face = sorted(face)
+                if face not in self.faces:
+                    self.faces.append(face)
+                    self.num_face_vertices += len(face)
 
         ## Arm parameters/variables
         self.inv_mass_mat = np.eye(
@@ -325,7 +353,10 @@ class HydrostatArm3D:
 
     def calc_constraints(self):
         ## Calculate variable length constraints first.
+        start_time = time.perf_counter()
+        logger.debug("calc_constraints start")
 
+        last_time = time.perf_counter()
         # Obstacles
         collisions = []
         for idx, point in enumerate(self.positions):
@@ -335,6 +366,10 @@ class HydrostatArm3D:
                     collisions.append(
                         {"constraint": point - nearest_point, "index": idx}
                     )
+        logger.debug(
+            f"[{time.perf_counter() - last_time}] calc collisions and nearest points"
+        )
+        last_time = time.perf_counter()
 
         # Edge length. No edge less than minimum edge length
         short_edges = []
@@ -350,6 +385,11 @@ class HydrostatArm3D:
                     }
                 )
 
+        logger.debug(
+            f"[{time.perf_counter() - last_time}] calc minimum edge constraints"
+        )
+        last_time = time.perf_counter()
+
         ## Instantiate constraint matrices
         constraints = np.zeros(
             len(collisions) * 3
@@ -361,6 +401,9 @@ class HydrostatArm3D:
         jacobians = np.zeros((len(constraints), len(self.position_vector)))
         djacdts = np.zeros((len(constraints), len(self.position_vector)))
 
+        logger.debug(f"[{time.perf_counter() - last_time}] instantiate matrices")
+        last_time = time.perf_counter()
+
         constraint_idx = 0
         for collision in collisions:
             pos_indices = get_vec_indices(collision["index"])
@@ -368,6 +411,9 @@ class HydrostatArm3D:
             constraints[constraint_indices] = collision["constraint"]
             jacobians[constraint_indices, pos_indices] = 1
             constraint_idx += 3
+
+        logger.debug(f"[{time.perf_counter() - last_time}] add collision constraints")
+        last_time = time.perf_counter()
 
         for short_edge in short_edges:
             pos_indices = get_vec_indices(short_edge["edge"])
@@ -387,6 +433,9 @@ class HydrostatArm3D:
             djacdts[constraint_idx, pos_indices[3:]] = -norm_dif
             constraint_idx += 1
 
+        logger.debug(f"[{time.perf_counter() - last_time}] add short edge constraints")
+        last_time = time.perf_counter()
+
         for cell_idx, cell in enumerate(self.cells):
             # Add boundary constraints
             for idx in cell.fixed_indices:
@@ -405,6 +454,11 @@ class HydrostatArm3D:
                 jacobians[constraint_idx + 2, idx * 3 + 2] = 1
                 constraint_idx += 3
 
+            logger.debug(
+                f"[{time.perf_counter() - last_time}] add cell {cell_idx} boundary constraints"
+            )
+            last_time = time.perf_counter()
+
             # Add volume constraints
             volume, jacobian, djacdt = cell.volume_constraints(
                 self.positions, self.velocities
@@ -415,21 +469,30 @@ class HydrostatArm3D:
                 djacdts[constraint_idx] = djacdt
                 constraint_idx += 1
 
-            # Add face constraints
-            for idx, face in enumerate(cell.faces):
-                if len(face) <= 3:
-                    continue
-                face_constraints, face_jacobians, face_djacdts = cell.face_constraints(
-                    self.positions, self.velocities, idx
-                )
-                constraints[constraint_idx : constraint_idx + len(face)] = (
-                    face_constraints
-                )
-                jacobians[constraint_idx : constraint_idx + len(face)] = face_jacobians
-                djacdts[constraint_idx : constraint_idx + len(face)] = face_djacdts
-                constraint_idx += len(face)
+            logger.debug(
+                f"[{time.perf_counter() - last_time}] add cell {cell_idx} volume constraints"
+            )
+            last_time = time.perf_counter()
 
-            # TODO Self Intersection
+        # Add face constraints
+        for face in self.faces:
+            if len(face) <= 3:
+                continue
+            face_constraints, face_jacobians, face_djacdts = calc_face_constraints(
+                self.positions, self.velocities, face
+            )
+            constraints[constraint_idx : constraint_idx + len(face)] = face_constraints
+            jacobians[constraint_idx : constraint_idx + len(face)] = face_jacobians
+            djacdts[constraint_idx : constraint_idx + len(face)] = face_djacdts
+            constraint_idx += len(face)
+
+        logger.debug(
+            f"[{time.perf_counter() - last_time}] add cell {cell_idx} face constraints"
+        )
+        last_time = time.perf_counter()
+
+        # TODO Self Intersection
+        logger.debug(f"[{time.perf_counter() - start_time}] total constraint time")
         return constraints, jacobians, djacdts
 
     def set_external_forces(
@@ -534,19 +597,37 @@ class HydrostatArm3D:
     def calc_next_states(self, dt):
         self.timestamp += dt
 
+        start_time = time.perf_counter()
+        logger.debug(f"dynamics start")
+
+        last_time = time.perf_counter()
         constraint, jac, djac = self.calc_constraints()
+        logger.debug(f"[{time.perf_counter() - last_time}] constraints calculated")
+        last_time = time.perf_counter()
 
         self.control_muscles()
+        logger.debug(f"[{time.perf_counter() - last_time}] muscle control")
+        last_time = time.perf_counter()
         active_edge_forces = self.active_edge_forces()
+        logger.debug(f"[{time.perf_counter() - last_time}] set active forces")
+        last_time = time.perf_counter()
         passive_edge_forces = self.passive_edge_forces()
+        logger.debug(f"[{time.perf_counter() - last_time}] set passive forces")
+        last_time = time.perf_counter()
 
         # TODO figure out how to rigorously size the regularization term
         front_inverse = np.linalg.inv(
             jac @ self.inv_mass_mat @ jac.T + np.eye(len(constraint)) * 1e-6
         )
+        logger.debug(f"[{time.perf_counter() - last_time}] front inverse calculated")
+        last_time = time.perf_counter()
+
         velocity_term = (
             jac @ self.inv_mass_mat @ self.damping_mat - djac
         ) @ self.velocity_vector
+        logger.debug(f"[{time.perf_counter() - last_time}] velocity component")
+        last_time = time.perf_counter()
+
         force_term = (
             jac
             @ self.inv_mass_mat
@@ -554,15 +635,22 @@ class HydrostatArm3D:
                 self.external_forces + active_edge_forces - passive_edge_forces
             ).flatten()
         )
+        logger.debug(f"[{time.perf_counter() - last_time}] force component")
+        last_time = time.perf_counter()
+
         constraint_control = (
             self.constraint_spring * constraint
             + self.constraint_damper * jac @ self.velocity_vector
         )
+        logger.debug(f"[{time.perf_counter() - last_time}] constraint control")
+        last_time = time.perf_counter()
+
         lagrange_mult = front_inverse @ (
             velocity_term - force_term - constraint_control
         )
-
         reactions = jac.T @ lagrange_mult
+        logger.debug(f"[{time.perf_counter() - last_time}] reactions calculated")
+        last_time = time.perf_counter()
 
         accel = self.inv_mass_mat @ (
             (self.external_forces + active_edge_forces).flatten()
@@ -573,5 +661,10 @@ class HydrostatArm3D:
 
         self.velocity_vector += accel * dt
         self.position_vector += self.velocity_vector * dt
+
+        logger.debug(f"[{time.perf_counter() - last_time}] integration calculated")
+        last_time = time.perf_counter()
+
+        logger.debug(f"[{time.perf_counter() - start_time}] total dynamics time")
 
         return self.position_vector, self.velocity_vector, accel

@@ -33,6 +33,7 @@ class NodeDrawer3D:
 
     def main_loop(self, simulating=True):
         while self.running:
+            loop_start = time.perf_counter()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -101,17 +102,15 @@ class NodeDrawer3D:
             self.draw_obstacles()
 
             self.draw_axes()
-            actual_fps = self.clock.get_fps()
-            loop_period = 0
-            if actual_fps > 0:
-                loop_period = 1 / actual_fps * 1000
-            print(
-                f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
-            )
-            # print("positions:", self.structure.positions)
 
             pygame.display.flip()
             self.clock.tick(self.fps)
+
+            actual_fps = self.clock.get_fps()
+            loop_period = (time.perf_counter() - loop_start) * 1000
+            print(
+                f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
+            )
 
     def draw_axes(self):
         gl.glBegin(gl.GL_LINES)
