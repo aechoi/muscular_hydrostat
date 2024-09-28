@@ -3,3 +3,4 @@ venv/
 *.npz
 *.mp4
 .vscode
+*.log
