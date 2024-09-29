@@ -108,8 +108,7 @@ def calc_face_constraints(positions, velocities, face_indices):
     last_time = time.perf_counter()
     points = positions[face_indices]
     dpointsdt = velocities[face_indices]
-    N = len(points)
-    D = len(points[0])
+    N, D = points.shape
 
     centroid = np.average(points, axis=0)
     dcentroiddt = np.average(dpointsdt, axis=0)
@@ -130,74 +129,70 @@ def calc_face_constraints(positions, velocities, face_indices):
     last_time = time.perf_counter()
 
     indices = get_vec_indices(face_indices)
-    constraints = centered_points @ normal
+    constraints = centered_points @ normal  # NxD @ D = N
 
     dPdP = np.zeros((N, N, D, D))
     dPdP[np.arange(N), np.arange(N), :, :] = np.eye(D)
-    dcentereddP = dPdP - np.eye(D)[None, None, :, :] / N
+    dcentereddP = dPdP - np.eye(D)[None, None, :, :] / N  # NxNxDxD
     jacobian = np.zeros((N, positions.size))
     jacobian[:, indices] = (
-        dcentereddP @ normal + np.einsum("ij,klj->ikl", centered_points, dndp)
+        dcentereddP @ normal  # NxNxDxD @ D = NxNxD
+        + (centered_points @ dndp).swapaxes(0, 1)  # (NxD @ NxDxD)swap = NxNxD
     ).reshape(N, -1)
 
     djacdt = np.zeros((N, positions.size))
     djacdt[:, indices] = (
         dcentereddP @ dndt
-        + np.einsum("ij,klj->ikl", centered_velocities, dndp)
-        + np.einsum("ij,klj->ikl", centered_points, ddndpdt)
+        + (centered_velocities @ dndp).swapaxes(0, 1)
+        + (centered_points @ ddndpdt).swapaxes(0, 1)
     ).reshape(N, -1)
     logger.debug(f"[{time.perf_counter() - last_time}] assembly calcs")
-    last_time = time.perf_counter()
 
     return constraints, jacobian, djacdt
 
 
 def calc_covariance_variables(centered_points, centered_velocities):
-    N = len(centered_points)
+    dof = len(centered_points) - 1
 
     cov = np.cov(centered_points.T)
 
+    units = np.eye(3)[None, :, None, :]
+
     # dCdP
-    units = np.expand_dims(np.eye(3), (0, 2))
-    points_tensor = np.expand_dims(centered_points, (1, 3))
-    dcdp_single = points_tensor @ units
-    dcdp = 1 / (N - 1) * (dcdp_single.transpose(0, 1, 3, 2) + dcdp_single)
+    dcdp_single = centered_points[:, None, :, None] @ units
+    dcdp = (dcdp_single.swapaxes(-1, -2) + dcdp_single) / dof
 
     # dCdt
-    dcdt_single = np.einsum("ij,ik->jk", centered_velocities, centered_points)
-    dcdt = 1 / (N - 1) * (dcdt_single + dcdt_single.T)
+    dcdt_single = centered_velocities.T @ centered_points
+    dcdt = (dcdt_single + dcdt_single.T) / dof
 
     # ddCdPdt
-    velocity_tensor = np.expand_dims(centered_velocities, (1, 3))
-    ddcdpdt_single = velocity_tensor @ units
-    ddcdpdt = 1 / (N - 1) * (ddcdpdt_single.transpose(0, 1, 3, 2) + ddcdpdt_single)
+    ddcdpdt_single = centered_velocities[:, None, :, None] @ units
+    ddcdpdt = (ddcdpdt_single.swapaxes(-1, -2) + ddcdpdt_single) / dof
 
     return cov, dcdp, dcdt, ddcdpdt
 
 
 def calc_normal_variables(cov, dcdp, dcdt, ddcdpdt):
     eigvals, eigvecs = np.linalg.eigh(cov)
+    eigvecsT = eigvecs.T
     min_eigvec = eigvecs[:, np.argmin(eigvals)]
 
     normal = min_eigvec
 
-    # dNdP
+    # dNdP axes 1 and 2 swapped because not used elsewhere otherwise
     eigval_dif = eigvals[:, None] - eigvals
     eigval_dif = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
-    dndp = np.einsum(
-        "ijkl,lk,mk->ijm",
-        eigval_dif[0][:, None] * eigvecs.T @ dcdp,
-        min_eigvec.reshape(-1, 1),
-        eigvecs,
-    )
+    min_eigval_dif = eigval_dif[0][:, None]
+    dndp = (min_eigval_dif * eigvecsT @ dcdp @ min_eigvec @ eigvecsT).swapaxes(-2, -1)
 
-    dvdts = (-eigval_dif * (eigvecs.T @ dcdt @ eigvecs))[:, :, None] * eigvecs.T[
+    dvdts = (-eigval_dif * (eigvecsT @ dcdt @ eigvecs))[:, :, None] * eigvecsT[
         :, None, :
     ]
     dvdts = np.sum(dvdts, axis=0).T
     dndt = dvdts[:, 0]
 
-    dldts = np.einsum("ij,ji->i", eigvecs.T @ dcdt, eigvecs)
+    dldts = np.diagonal(eigvecsT @ dcdt @ eigvecs)
 
     deigval_difdt = dldts[:, None] - dldts
     deigval_difdt = -np.divide(
@@ -207,38 +202,19 @@ def calc_normal_variables(cov, dcdp, dcdt, ddcdpdt):
         where=deigval_difdt != 0,
     )
 
+    # ugly and ragged to reduce computation
     ddndpdt = (
-        np.einsum(
-            "ijkl,lk,mk->ijm",
-            deigval_difdt[0][:, None] * eigvecs.T @ dcdp,
-            min_eigvec.reshape(-1, 1),
-            eigvecs,
+        (
+            (
+                (deigval_difdt[0][:, None] * eigvecsT + min_eigval_dif * dvdts.T) @ dcdp
+                + min_eigval_dif * eigvecsT @ ddcdpdt
+            )
+            @ min_eigvec
+            + min_eigval_dif * eigvecsT @ dcdp @ dvdts[:, 0]
         )
-        + np.einsum(
-            "ijkl,lk,mk->ijm",
-            eigval_dif[0][:, None] * dvdts.T @ dcdp,
-            min_eigvec.reshape(-1, 1),
-            eigvecs,
-        )
-        + np.einsum(
-            "ijkl,lk,mk->ijm",
-            eigval_dif[0][:, None] * eigvecs.T @ ddcdpdt,
-            min_eigvec.reshape(-1, 1),
-            eigvecs,
-        )
-        + np.einsum(
-            "ijkl,lk,mk->ijm",
-            eigval_dif[0][:, None] * eigvecs.T @ dcdp,
-            dvdts[:, 0].reshape(-1, 1),
-            eigvecs,
-        )
-        + np.einsum(
-            "ijkl,lk,mk->ijm",
-            eigval_dif[0][:, None] * eigvecs.T @ dcdp,
-            min_eigvec.reshape(-1, 1),
-            dvdts,
-        )
-    )
+        @ eigvecsT
+        + min_eigval_dif * eigvecsT @ dcdp @ min_eigvec @ dvdts.T
+    ).swapaxes(-2, -1)
 
     return normal, dndp, dndt, ddndpdt
 
