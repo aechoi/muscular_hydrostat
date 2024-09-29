@@ -1,3 +1,7 @@
+# TODO: use cupy for the large matrix manipulations (front inverse and probably
+# face matrix calculations). Look into using @njit from numba for necessary
+# for loops in constraint calculation
+
 from dataclasses import dataclass
 from typing import Sequence
 import numpy as np
@@ -337,8 +341,12 @@ class HydrostatArm3D:
         collisions = []
         for idx, point in enumerate(self.positions):
             for obstacle in self.obstacles:
+                # TODO edit check_intersection to handle multiple points,
+                # remove point loop
                 if obstacle.check_intersection(point):
                     nearest_point = obstacle.nearest_point(point)
+                    # TODO edit nearest_ponit to handle multiple points, remove
+                    # conditional and vectorize assignment below
                     collisions.append(
                         {"constraint": point - nearest_point, "index": idx}
                     )
@@ -351,6 +359,7 @@ class HydrostatArm3D:
         short_edges = []
         min_edge_length = 0.4
         for edge in self.edges:
+            # TODO this is not ragged, can vectorize
             edge_length = np.linalg.norm(np.diff(self.positions[edge], axis=0))
             if edge_length < min_edge_length:
                 short_edges.append(
@@ -382,6 +391,8 @@ class HydrostatArm3D:
 
         constraint_idx = 0
         for collision in collisions:
+            # TODO: precompile so not looped
+            # to index, get [np.arange(len(collisions)).repeat(3), pos_indices]
             pos_indices = get_vec_indices(collision["index"])
             constraint_indices = get_vec_indices(constraint_idx)
             constraints[constraint_indices] = collision["constraint"]
@@ -415,6 +426,7 @@ class HydrostatArm3D:
         for cell_idx, cell in enumerate(self.cells):
             # Add boundary constraints
             for idx in cell.fixed_indices:
+                # TODO precompile a list of fixed indices, fix them all at once
                 constraints[constraint_idx] = (
                     self.positions[idx][0] - self.positions_init[idx][0]
                 )
