@@ -137,18 +137,27 @@ class ConvexObstacle3D:
 
             self.normal_matrix[idx] = normal
 
-    def check_intersection(self, point):
+    def check_intersection(self, points):
         """Returns true if the point intersects the obstacle.
 
         Args:
-            point: a length 2 np.array
+            point: a nx2 np.array
         Return:
             Returns true if the point intersects the obstacle. Points on the
             edge are considered intersecting.
         """
-        return np.all(np.diag(self.normal_matrix @ (point - self.face_centroids).T) < 0)
+        return np.all(
+            np.diagonal(
+                self.normal_matrix
+                @ (points[:, :, None] - self.face_centroids.T[None, :, :]),
+                axis1=-2,
+                axis2=-1,
+            )
+            <= 0,
+            axis=1,
+        )
 
-    def nearest_point(self, point):
+    def nearest_point(self, points):
         """Returns the nearest point on the surface of the obstacle to a point.
         Only works when the point is inside the polygon.
 
@@ -157,14 +166,24 @@ class ConvexObstacle3D:
         Return:
             Returns another length 2 np.array that has the x,y coordinate of
             the closest point."""
-        distances = -np.diag(self.normal_matrix @ (point - self.face_centroids).T)
-        if np.any(distances < 0):
-            raise ValueError("Point is outside the polygon.")
-        nearest_idx = np.argmin(distances)
+        # distances = -np.diag(self.normal_matrix @ (points - self.face_centroids).T)
+        distances = -np.diagonal(
+            self.normal_matrix
+            @ (points[:, :, None] - self.face_centroids.T[None, :, :]),
+            axis1=-2,
+            axis2=-1,
+        )  # NxF
+        # if np.any(distances < 0, axis=1):
+        #     raise ValueError("Point is outside the polygon.")
+        nearest_idx = np.argmin(distances, axis=1)  # N, indexing F
 
         buffer_factor = 0.01  # ensures that the point is pushed out of the wall instead of asymptotically approaching edge.
-        return point + self.normal_matrix[nearest_idx] * (
-            distances[nearest_idx] + buffer_factor
+        return (
+            points
+            + self.normal_matrix[nearest_idx, :]
+            * (distances[np.arange(len(distances)), nearest_idx] + buffer_factor)[
+                :, None
+            ]
         )
 
     def calc_many_intersections(self, points):
