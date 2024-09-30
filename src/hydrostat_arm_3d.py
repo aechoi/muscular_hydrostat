@@ -358,24 +358,11 @@ class HydrostatArm3D:
         last_time = time.perf_counter()
 
         # Edge length. No edge less than minimum edge length
-        short_edges = []
         min_edge_length = 0.4
         edge_points = self.positions[self.edges]
         edge_lengths = np.linalg.norm(edge_points[:, 0] - edge_points[:, 1], axis=1)
         edge_mask = (edge_lengths < min_edge_length).astype(bool)
         num_short = np.sum(edge_mask)
-
-        for edge in self.edges:
-            # TODO this is not ragged, can vectorize
-            edge_length = np.linalg.norm(np.diff(self.positions[edge], axis=0))
-            if edge_length < min_edge_length:
-                short_edges.append(
-                    {
-                        "constraint": edge_length - min_edge_length - 0.01,
-                        "edge": edge,
-                        "edge_length": edge_length,
-                    }
-                )
 
         logger.debug(
             f"[{time.perf_counter() - last_time}] calc minimum edge constraints"
@@ -410,51 +397,34 @@ class HydrostatArm3D:
         logger.debug(f"[{time.perf_counter() - last_time}] add collision constraints")
         last_time = time.perf_counter()
 
-        fake_jacobians = jacobians.copy()
         if num_short > 0:
+            edge_lengths = edge_lengths[edge_mask]
             constraints[constraint_idx : constraint_idx + np.sum(edge_mask)] = (
-                edge_lengths[edge_mask] - min_edge_length - 0.01
+                edge_lengths - min_edge_length - 0.01
             )
             short_points = edge_points[edge_mask]
-            norm_difs = (short_points[:, 0] - short_points[:, 1]) / edge_lengths[
-                edge_mask
-            ][:, None]
+            short_dif = short_points[:, 0] - short_points[:, 1]
+            norm_difs = (short_dif) / edge_lengths[:, None]
 
             pos_indices = get_vec_indices(self.edges[edge_mask].reshape(-1)).reshape(
                 -1, 2, 3
             )
             constraint_indices = constraint_idx + np.arange(num_short).reshape(-1, 1)
 
-            fake_jacobians[
-                constraint_indices,
-                pos_indices[:, 0],
-            ] = norm_difs
-            fake_jacobians[
-                constraint_indices,
-                pos_indices[:, 1],
-            ] = -norm_difs
+            jacobians[constraint_indices, pos_indices[:, 0]] = norm_difs
+            jacobians[constraint_indices, pos_indices[:, 1]] = -norm_difs
 
             short_velocities = self.velocities[self.edges[edge_mask]]
-            norm_vels = (
-                short_velocities[:, 0] - short_velocities[:, 1]
-            ) / short_velocities
-        for short_edge in short_edges:
-            pos_indices = get_vec_indices(short_edge["edge"])
-
-            constraints[constraint_idx] = short_edge["constraint"]
-
-            points = self.positions[short_edge["edge"]]
-            norm_dif = (points[0] - points[1]) / short_edge["edge_length"]
-            jacobians[constraint_idx, pos_indices[:3]] = norm_dif
-            jacobians[constraint_idx, pos_indices[3:]] = -norm_dif
-
-            velocities = self.velocities[short_edge["edge"]]
-            norm_dif = velocities[0] - velocities[1] / np.linalg.norm(
-                velocities, axis=0
+            vel_dif = short_velocities[:, 0] - short_velocities[:, 1]
+            dunit_edge = (
+                vel_dif / edge_lengths[:, None]
+                - short_dif
+                * (np.diag(short_dif @ vel_dif.T) / edge_lengths**3)[:, None]
             )
-            djacdts[constraint_idx, pos_indices[:3]] = norm_dif
-            djacdts[constraint_idx, pos_indices[3:]] = -norm_dif
-            constraint_idx += 1
+
+            djacdts[constraint_indices, pos_indices[:, 0]] = dunit_edge
+            djacdts[constraint_indices, pos_indices[:, 1]] = -dunit_edge
+            constraint_idx += num_short
 
         logger.debug(f"[{time.perf_counter() - last_time}] add short edge constraints")
         last_time = time.perf_counter()
