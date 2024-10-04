@@ -4,13 +4,16 @@
 
 from dataclasses import dataclass
 from typing import Sequence
-import numpy as np
-import sys
-from scipy import stats
 import time
 import logging
 
-from data_logger import DataLogger
+import numpy as np
+
+# import cupy as cp
+
+# from numba import jit
+
+# from data_logger import DataLogger
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -68,38 +71,35 @@ class HydrostatCell3D:
                 continue
             for v1, v2 in zip(face[1:-1], face[2:]):
                 triangles.append([face[0], v1, v2])
-        return triangles
+        return np.array(triangles)
 
     def volume_constraints(self, positions, velocities):
-        volume = 0
         jacobian = np.zeros(positions.size)
         djacdt = np.zeros(positions.size)
 
         apex_position = positions[self.vertices[0]]
         apex_velocity = velocities[self.vertices[0]]
 
-        for triangle in self.triangles:
-            relative_positions = positions[triangle] - apex_position
-            relative_velocities = velocities[triangle] - apex_velocity
+        relative_positions = positions[self.triangles] - apex_position  # Tx3xD
+        relative_velocities = velocities[self.triangles] - apex_velocity
+        volumes = np.linalg.det(relative_positions)  # T
+        volume = np.sum(volumes)
 
-            if np.linalg.cond(relative_positions) >= 1 / sys.float_info.epsilon:
-                # Only run calculations on non-degenerate tetrahedrons
-                continue
+        position_inverse = np.linalg.inv(relative_positions)  # Tx3xD
 
-            volume += np.linalg.det(relative_positions)
+        cofactors = volumes[:, None, None] * position_inverse.swapaxes(-1, -2)  # TxDx3
+        adjugate = cofactors.swapaxes(-1, -2)
+        jacobian[get_vec_indices([0])] = -np.sum(cofactors, axis=(0, 1))
+        vec_indices = get_vec_indices(self.triangles.flatten())
+        np.add.at(jacobian, vec_indices, cofactors.flatten())
 
-            cofactors = (
-                np.linalg.det(relative_positions) * np.linalg.inv(relative_positions).T
-            )
-            jacobian[get_vec_indices([0])] -= np.sum(cofactors, axis=0)
-            jacobian[get_vec_indices(triangle)] += cofactors.flatten()
-
-            dcofactors = np.trace(cofactors.T @ relative_velocities) * np.linalg.inv(
-                relative_positions
-            ) - cofactors.T @ relative_velocities @ np.linalg.inv(relative_positions)
-            dcofactors = dcofactors.T
-            djacdt[get_vec_indices([0])] -= np.sum(dcofactors, axis=0)
-            djacdt[get_vec_indices(triangle)] += dcofactors.flatten()
+        dcofactors = (
+            np.trace(adjugate @ relative_velocities, axis1=1, axis2=2)[:, None, None]
+            * position_inverse
+            - adjugate @ relative_velocities @ position_inverse
+        )
+        djacdt[get_vec_indices([0])] = -np.sum(dcofactors, axis=(0, 1))
+        np.add.at(djacdt, vec_indices, dcofactors.flatten())
 
         return volume, jacobian, djacdt
 
@@ -107,9 +107,12 @@ class HydrostatCell3D:
 def calc_face_constraints(positions, velocities, face_indices):
     """Calculate the constraint vector, Jacobian, and Jacobian time
     derivative for maintaining face planarity constraints."""
+    # Faces are looped over because faces can be ragged. Can we vectorize anyways?
+    # face_indices, f_i, can have different length for different i
 
     logger.debug("start face constraint calculations")
     last_time = time.perf_counter()
+
     points = positions[face_indices]
     dpointsdt = velocities[face_indices]
     N, D = points.shape
@@ -186,20 +189,20 @@ def calc_normal_variables(cov, dcdp, dcdt, ddcdpdt):
 
     # dNdP axes 1 and 2 swapped because not used elsewhere otherwise
     eigval_dif = eigvals[:, None] - eigvals
-    eigval_dif = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
+    eigval_dif[:] = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
     min_eigval_dif = eigval_dif[0][:, None]
     dndp = (min_eigval_dif * eigvecsT @ dcdp @ min_eigvec @ eigvecsT).swapaxes(-2, -1)
 
-    dvdts = (-eigval_dif * (eigvecsT @ dcdt @ eigvecs))[:, :, None] * eigvecsT[
-        :, None, :
-    ]
-    dvdts = np.sum(dvdts, axis=0).T
+    dvdts = np.sum(
+        (-eigval_dif * (eigvecsT @ dcdt @ eigvecs))[:, :, None] * eigvecsT[:, None, :],
+        axis=0,
+    ).T
     dndt = dvdts[:, 0]
 
     dldts = np.diagonal(eigvecsT @ dcdt @ eigvecs)
 
     deigval_difdt = dldts[:, None] - dldts
-    deigval_difdt = -np.divide(
+    deigval_difdt[:] = -np.divide(
         deigval_difdt,
         (eigvals[:, None] - eigvals) ** 2,
         out=deigval_difdt,

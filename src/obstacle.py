@@ -52,11 +52,6 @@ class ConvexObstacle2D:
         return np.all(
             np.diag(self.normal_matrix @ (point[:, None] - self.vertices[:-1].T)) > 0
         )
-        # Might be a faster way to do it? Above is more readable though
-        # return np.all(
-        #     np.einsum("ij,ji->i", self.normal_matrix, point[:, None] - self.vertices.T)
-        #     > 0
-        # )
 
     def nearest_point(self, point):
         """Returns the nearest point on the surface of the obstacle to a point.
@@ -72,15 +67,6 @@ class ConvexObstacle2D:
         )
         if np.any(distances < 0):
             raise ValueError("Point is outside the polygon.")
-            # closest_point = cp.Variable(2)
-            # objective = cp.Minimize(cp.sum_squares(closest_point - point))
-            # constraints = [
-            #     row @ (closest_point - vertex) == 0
-            #     for vertex, row in zip(self.vertices[:-1], self.normal_matrix)
-            # ]
-            # prob = cp.Problem(objective, constraints)
-            # prob.solve()
-            # return closest_point.value
         nearest_idx = np.argmin(distances)
         buffer_factor = 1.1  # ensures that the point is pushed out of the wall instead of asymptotically approaching edge.
         return (
@@ -166,15 +152,12 @@ class ConvexObstacle3D:
         Return:
             Returns another length 2 np.array that has the x,y coordinate of
             the closest point."""
-        # distances = -np.diag(self.normal_matrix @ (points - self.face_centroids).T)
         distances = -np.diagonal(
             self.normal_matrix
             @ (points[:, :, None] - self.face_centroids.T[None, :, :]),
             axis1=-2,
             axis2=-1,
         )  # NxF
-        # if np.any(distances < 0, axis=1):
-        #     raise ValueError("Point is outside the polygon.")
         nearest_idx = np.argmin(distances, axis=1)  # N, indexing F
 
         buffer_factor = 0.01  # ensures that the point is pushed out of the wall instead of asymptotically approaching edge.
