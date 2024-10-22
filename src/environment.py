@@ -4,8 +4,6 @@ arm."""
 
 import numpy as np
 import scipy.ndimage as nd
-import scipy.signal as sig
-
 
 class Environment3D:
     """A 3D environment with obstacles and food"""

@@ -65,14 +65,14 @@ class NodeDrawer3D:
                         if event.button == 2:
                             self.panning = True
                     else:
-                        if event.button == 2:
+                        if event.button == 2 or event.button == 3:
                             self.orbiting = True
                 if event.type == pygame.MOUSEBUTTONUP:
                     if self.control_mod:
                         if event.button == 2:
                             self.panning = False
                     else:
-                        if event.button == 2:
+                        if event.button == 2 or event.button == 3:
                             self.orbiting = False
                 if event.type == pygame.MOUSEMOTION:
                     if self.orbiting:

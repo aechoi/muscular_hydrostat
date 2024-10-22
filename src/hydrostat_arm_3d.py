@@ -226,28 +226,6 @@ def calc_normal_variables(cov, dcdp, dcdt, ddcdpdt):
     return normal, dndp, dndt, ddndpdt
 
 
-# # def self_intersection_constraint(self, positions, velocities):
-# #     """return the constraints, jacobian, and jacobian time derivative for
-# #     cell points intersecting the cell edges"""
-# #     points = positions[self.vertices]
-# #     print(points)
-# #     # face vertices are ordered counter clockwise from outside
-# #     constraints = []
-# #     normals = np.zeros((len(self.faces), 3))
-# #     centroids = np.zeros_like(normals)
-# #     for idx, face in enumerate(self.faces):
-# #         face_points = positions[face]
-# #         centroids[idx] = np.average(face_points, axis=0)
-# #         normals[idx] = np.cross(*(face_points - centroids[idx])[:2])
-# #     intersect = np.einsum(
-# #         "ijk,jk->ij", points[:, None, :] - centroids[None, :, :], normals
-# #     )
-# #     np.where(intersect > 0)[0]
-
-# def calc_next_states(self, dt):
-#     pass
-
-
 @dataclass
 class HydrostatArm3D:
     positions: np.ndarray  # nxd array of point coordinates
