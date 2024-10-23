@@ -663,3 +663,4 @@ class HydrostatArm3D:
         logger.debug(f"[{time.perf_counter() - start_time}] total dynamics time")
 
         return self.position_vector, self.velocity_vector, accel
+    

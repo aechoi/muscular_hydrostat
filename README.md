@@ -3,7 +3,7 @@
 pydrostat is a package for simulating and controlling muscular hydrostats, an biological structure which moves without the use of skeletal support such as tongues, elephant trunks, and octopus arms.
 
 
-# Dev Guide
+# Installation
 Start by ensuring you have python 3.11 or greater and upgrade pip. Replace `XX` with the python version.
 - Windows: `py -3.XX -m pip install --upgrade pip`
 - macOS/Linux: `python3.XX -m pip install --upgrade pip`
@@ -31,3 +31,9 @@ In order to run unit tests, install the package in editable mode using the follo
 `pip install -e .`
 
 Tests can then be run by using the command `pytest` in the terminal. The test directory, `tests` should mirror the package directory `src>pydrostat` where each module's tests are located in a test file `test_<module_name>.py`.
+
+# Dev Guide
+
+In general, we will try to follow [Google's Python style guide](https://google.github.io/styleguide/pyguide.html).
+
+Interfaces will have the naming convention `<x>_interface.py` with class name `I<X>`.
