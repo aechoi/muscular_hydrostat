@@ -92,6 +92,7 @@ class NodeDrawer:
         self.dragging_node = np.argmin(
             np.linalg.norm(self.vertices - click_coord[None, :], axis=1)
         )
+        self.force_vec = np.zeros(2)
 
     def on_release(self, _):
         """Handler for mouse button release event."""

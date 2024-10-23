@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from pydrostat.structure import obstacle
+from pydrostat.environment import obstacle
 
 
 def test_convexity():
