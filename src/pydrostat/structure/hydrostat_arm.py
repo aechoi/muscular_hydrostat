@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import numpy as np
 
-from data_logger import DataLogger
+from .data_logger import DataLogger
 
 
 @dataclass
