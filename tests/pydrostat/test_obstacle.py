@@ -1,22 +1,22 @@
 import numpy as np
 import pytest
-import obstacle
+from pydrostat import obstacle
 
 
 def test_convexity():
     with pytest.raises(ValueError):
         # direction changing, not self-intersecting
-        obst = obstacle.ConvexObstacle(
+        obst = obstacle.ConvexObstacle2D(
             np.array([[0, 0], [1, 0], [0.5, 0.5], [1, 1], [0, 1]])
         )
 
     with pytest.raises(ValueError):
         # direction changing, self intersecting
-        obst = obstacle.ConvexObstacle(np.array([[0, 0], [1, 0], [0, 1], [1, 1]]))
+        obst = obstacle.ConvexObstacle2D(np.array([[0, 0], [1, 0], [0, 1], [1, 1]]))
 
     with pytest.raises(ValueError):
         # direction maintaining, self intersecting
-        obst = obstacle.ConvexObstacle(
+        obst = obstacle.ConvexObstacle2D(
             np.array([[0, 0], [1, 0], [0.5, 0.5], [0.5, -0.5], [1, 0]])
         )
 
@@ -26,7 +26,7 @@ def test_check_intersection():
     # vertex, and outside (all false). On edge has trouble with numeric
     # error
 
-    obst = obstacle.ConvexObstacle(np.array([[0, 0], [0, 1]]))
+    obst = obstacle.ConvexObstacle2D(np.array([[0, 0], [0, 1]]))
     assert obst.check_intersection(np.array([-1, 0]))
     assert not obst.check_intersection(np.array([0, 0]))
     assert not obst.check_intersection(np.array([0, 0.5]))
@@ -40,7 +40,7 @@ def test_check_intersection():
     for polygon_type in polygons:
         centroids = np.mean(polygon_type, axis=1)
         for polygon, centroid in zip(polygon_type, centroids):
-            obst = obstacle.ConvexObstacle(polygon)
+            obst = obstacle.ConvexObstacle2D(polygon)
             assert obst.check_intersection(centroid)
 
             edge_point = (polygon[0] + polygon[1]) / 2
