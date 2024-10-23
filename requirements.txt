@@ -6,3 +6,5 @@ numpy
 pygame
 pyopengl
 scipy
+ipykernel
+pytest

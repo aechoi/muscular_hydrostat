@@ -3,10 +3,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "muscular_hydrostat"
-version = "0.0"
+name = "pydrostat"
+version = "0.0.1"
 authors = [
     { name="Alex Choi", email="choialex@uw.edu" },
+]
+description = "Simulation and control of a muscular hydrostat"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
 ]
 
 [tool.hatch.build.targets.wheel]
