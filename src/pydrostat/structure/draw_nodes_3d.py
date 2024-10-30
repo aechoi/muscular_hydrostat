@@ -49,10 +49,10 @@ class NodeDrawer3D:
                         simulating = not simulating
 
                     if event.key == pygame.K_RIGHT:
-                        _, _, _ = self.structure.calc_next_states(self.dt)
+                        self.structure.iterate(self.dt)
 
                     # if event.key == pygame.K_LEFT:
-                    #     _, _, _ = self.structure.calc_next_states(-self.dt)
+                    #     self.structure.iterate(-self.dt)
                 if event.type == pygame.KEYUP:
                     if event.key == pygame.K_LCTRL:
                         self.control_mod = False
@@ -95,7 +95,7 @@ class NodeDrawer3D:
 
             sim_start = time.perf_counter()
             if simulating:
-                _, _, _ = self.structure.calc_next_states(self.dt)
+                self.structure.iterate(self.dt)
             sim_end = time.perf_counter()
             self.draw_structure()
 
@@ -145,6 +145,8 @@ class NodeDrawer3D:
         for vertex, scent in zip(self.structure.positions, scents):
             gl.glColor3f(1, 1 - scent / max_scent, 1 - scent / max_scent)
             gl.glVertex3fv(vertex)
+        # for vertex in self.structure.positions:
+        #     gl.glVertex3fv(vertex)
         gl.glEnd()
 
     def draw_obstacles(self):

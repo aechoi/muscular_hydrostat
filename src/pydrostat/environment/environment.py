@@ -5,6 +5,13 @@ arm."""
 import numpy as np
 import scipy.ndimage as nd
 
+
+class Environment:
+    """TODO fill in. This is for the new class structure"""
+
+    pass
+
+
 class Environment3D:
     """A 3D environment with obstacles and food"""
 

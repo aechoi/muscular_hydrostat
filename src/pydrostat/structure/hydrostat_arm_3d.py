@@ -589,7 +589,7 @@ class HydrostatArm3D:
 
         return edge_forces
 
-    def calc_next_states(self, dt):
+    def iterate(self, dt):
         self.timestamp += dt
 
         start_time = time.perf_counter()
@@ -661,6 +661,3 @@ class HydrostatArm3D:
         last_time = time.perf_counter()
 
         logger.debug(f"[{time.perf_counter() - start_time}] total dynamics time")
-
-        return self.position_vector, self.velocity_vector, accel
-    

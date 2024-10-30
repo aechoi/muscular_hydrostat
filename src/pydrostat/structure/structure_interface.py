@@ -3,14 +3,24 @@
 Typical usage example:
     class SomeStructure(IStructure):
         ...
+
+TODO:
+- How to generalize sense data?
+- How do controllers know what to actuate?
 """
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from constraint_interface import IConstraint
-from .control.controller_interface import IController
+
+if TYPE_CHECKING:
+    from ..control.controller_interface import IController
+    from .constraint_interface import IConstraint
+    from .sensor_interface import ISensor
+    from ..environment.environment import Environment
 
 
 class IStructure(ABC):
@@ -50,8 +60,10 @@ class IStructure(ABC):
         initial_velocities: np.ndarray,
         masses: np.ndarray,
         damping_rates: np.ndarray,
-        controller: IController,
+        controller: IController = None,
+        environment: Environment = None,
         constraints: list[IConstraint] = [],
+        sensors: list[ISensor] = [],
         constraint_damping_rate=10,
         constraint_spring_rate=500,
     ):
@@ -61,8 +73,9 @@ class IStructure(ABC):
         self.damping_rates = damping_rates
 
         self.controller = controller
+        self.environment = environment
         self.constraints = constraints
-        self.sensor_readings = None  # TODO: Is there a general way to do sensor readings? Maybe need interface for sense object
+        self.sensors = sensors
 
         self.external_forces = np.zeros_like(self.positions)
 
@@ -75,47 +88,18 @@ class IStructure(ABC):
         djacobian_dts = []
         for constraint in self.constraints:
             constraint, jacobian, djacobian_dt = constraint.calculate_constraints(self)
-            constraints.append(constraint)
+            constraints.extend(constraint)
             jacobians.append(jacobian)
             djacobian_dts.append(djacobian_dt)
-        constraints = np.vstack(constraints)
+        constraints = np.array(constraints)
         jacobians = np.vstack(jacobians)
         djacobian_dts = np.vstack(djacobian_dts)
 
         return constraints, jacobians, djacobian_dts
 
-    def _sense(self):
-        """Take sensor measurements and store in self.sensor_readings"""
-        pass
-
-    def apply_external_forces(self, vertices: np.ndarray, forces: np.ndarray):
-        """Set the force acting on a particular vertex
-
-        Args:
-            vertices: a length l array of vertex indices to apply forces to
-            forces: an lxd array of forces"""
-        self.external_forces[vertices] = forces
-
-    def _calc_explicit_forces(self, control_inputs) -> np.ndarray:
-        """Calculate and sum all forces that are not calculated via constrained dynamics"""
-        # active_edge_forces = self._calc_active_edge_forces(control_inputs)
-        # passive_edge_forces = self._calc_passive_edge_forces()
-
-        # explicit_forces = (
-        #     self.external_forces
-        #     + active_edge_forces
-        #     - passive_edge_forces
-        #     - self.damping_rates[:, None] * self.velocities
-        # )
-        # return explicit_forces
-        pass
-
-    def _calculate_acceleration(self) -> np.ndarray:
-        """Calculate the acceleration of every vertex by calculating constraint forces."""
-        # TODO how does controller know what is actuateable? Should this be explicitly edges?
-        control_inputs = self.controller.calc_inputs(self)
-
-        explicit_forces = self._calc_explicit_forces(control_inputs)
+    def _calc_reaction_forces(self, explicit_forces):
+        if not self.constraints:
+            return np.zeros_like(explicit_forces)
 
         constraints, jacobians, djacobian_dts = self._calculate_constraints()
         front_inverse = np.linalg.inv(
@@ -129,6 +113,66 @@ class IStructure(ABC):
         )
         reaction_forces = np.tensordot(lagrange_multipliers, jacobians, 1)
 
+        return reaction_forces
+
+    def _sense(self):
+        """Take sensor measurements and store in self.sensor_readings"""
+        sensor_data = []
+        for sensor in self.sensors:
+            sensor_data.append(sensor.sense(self, self.environment))
+
+    @abstractmethod
+    def _actuate(self, control_input):
+        """Given a control input, actuate the muscles accordingly.
+
+        Args:
+            control_input: an np.ndarray of the same shape as the actuators
+
+        Returns:
+            An nxd np.ndarray of forces acting on each vertex
+
+        Raises:
+            NotImplemnetedError: if function is not implemented in subclass
+        """
+        raise NotImplementedError
+
+    def apply_external_forces(self, vertices: np.ndarray, forces: np.ndarray):
+        """Set the force acting on a particular vertex
+
+        Args:
+            vertices: a length l array of vertex indices to apply forces to
+            forces: an lxd array of forces"""
+        self.external_forces[vertices] = forces
+
+    @abstractmethod
+    def _calc_explicit_forces(self, actuation_forces) -> np.ndarray:
+        """Calculate and sum all forces that are not calculated via constrained
+        dynamics.
+
+        Args:
+            actuation_forces: an nxd np.ndarray where n is the number of vertices and
+                d is the dimension of the space
+
+        Returns:
+            An nxd array of total explicit forces on the vertices.
+
+        Raises:
+            NotImplementedError: if function is not implemented in subclass
+        """
+        raise NotImplementedError
+
+    def _calculate_acceleration(self) -> np.ndarray:
+        """Calculate the acceleration of every vertex by calculating constraint forces."""
+        # TODO how does controller know what is actuateable? Should this be explicitly edges?
+        control_inputs = np.zeros(len(self.edges))
+        if self.controller is not None:
+            control_inputs = self.controller.calc_inputs(self)
+
+        # TODO may be worth formatting as some sort of a(x) + b(u) instead.
+        actuation_forces = self._actuate(control_inputs)
+        explicit_forces = self._calc_explicit_forces(actuation_forces)
+        reaction_forces = self._calc_reaction_forces(explicit_forces)
+
         accelerations = self.inv_masses[:, None] * (reaction_forces + explicit_forces)
         return accelerations
 
@@ -139,6 +183,6 @@ class IStructure(ABC):
         using a more sophisticated integration scheme (RK2, RK4, etc). Seems like a
         good use of a strategy design pattern.
         """
-        acceleration = self._calculate_acceleration(dt)
+        acceleration = self._calculate_acceleration()
         self.positions = self.positions + self.velocities * dt
         self.velocities = self.velocities + acceleration * dt
