@@ -1,5 +1,6 @@
 import OpenGL.GL as gl
 import OpenGL.GLU as glu
+from PIL import Image
 import pygame
 import sys
 import time
@@ -25,14 +26,19 @@ class NodeDrawer3D:
         glu.gluPerspective(45, (display[0] / display[1]), 0.1, 100.0)
         gl.glTranslatef(0.0, -3, -10)
         gl.glRotatef(-70, 1, 0, 0)
+        gl.glTranslatef(0.0, 3, 0)
 
         # pygame control parameters
         self.orbiting = False
         self.panning = False
         self.control_mod = False
+        self.frame_count = 0
 
-    def main_loop(self, simulating=True):
+    def main_loop(self, simulating=False, rotating=False, recording=False):
         while self.running:
+            if rotating:
+                gl.glRotatef(0.2, 0, 0, 1)
+
             loop_start = time.perf_counter()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -103,6 +109,17 @@ class NodeDrawer3D:
 
             self.draw_axes()
 
+            if recording:
+                width, height = pygame.display.get_surface().get_size()
+                pixels = gl.glReadPixels(
+                    0, 0, width, height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE
+                )
+                image = Image.frombytes("RGB", (width, height), pixels)
+                image = image.transpose(
+                    Image.FLIP_TOP_BOTTOM
+                )  # OpenGL origin is at the bottom-left
+                image.save(f"render/frames/frame_{self.frame_count:04d}.png")
+
             pygame.display.flip()
             self.clock.tick(self.fps)
 
@@ -111,6 +128,7 @@ class NodeDrawer3D:
             print(
                 f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
             )
+            self.frame_count += 1
 
     def draw_axes(self):
         gl.glBegin(gl.GL_LINES)
