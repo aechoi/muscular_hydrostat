@@ -5,7 +5,8 @@
 from dataclasses import dataclass
 from typing import Sequence
 import time
-import logging
+
+# import logging
 
 import numpy as np
 
@@ -15,13 +16,13 @@ import numpy as np
 
 # from data_logger import DataLogger
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    filename="log.log",
-    filemode="w",
-    format="%(asctime)s %(levelname)s: %(message)s",
-    level=logging.DEBUG,
-)
+# logger = logging.getLogger(__name__)
+# logging.basicConfig(
+#     filename="log.log",
+#     filemode="w",
+#     format="%(asctime)s %(levelname)s: %(message)s",
+#     level=logging.DEBUG,
+# )
 
 
 def get_vec_indices(vertex_indices: list):
@@ -110,8 +111,8 @@ def calc_face_constraints(positions, velocities, face_indices):
     # Faces are looped over because faces can be ragged. Can we vectorize anyways?
     # face_indices, f_i, can have different length for different i
 
-    logger.debug("start face constraint calculations")
-    last_time = time.perf_counter()
+    # logger.debug("start face constraint calculations")
+    # last_time = time.perf_counter()
 
     points = positions[face_indices]
     dpointsdt = velocities[face_indices]
@@ -122,18 +123,18 @@ def calc_face_constraints(positions, velocities, face_indices):
     centered_points = points - centroid
     centered_velocities = dpointsdt - dcentroiddt
 
-    logger.debug(f"[{time.perf_counter() - last_time}] calc setup")
-    last_time = time.perf_counter()
+    # logger.debug(f"[{time.perf_counter() - last_time}] calc setup")
+    # last_time = time.perf_counter()
 
     cov, dcdp, dcdt, ddcdpdt = calc_covariance_variables(
         centered_points, centered_velocities
     )
-    logger.debug(f"[{time.perf_counter() - last_time}] covar calcs")
-    last_time = time.perf_counter()
+    # logger.debug(f"[{time.perf_counter() - last_time}] covar calcs")
+    # last_time = time.perf_counter()
 
     normal, dndp, dndt, ddndpdt = calc_normal_variables(cov, dcdp, dcdt, ddcdpdt)
-    logger.debug(f"[{time.perf_counter() - last_time}] normal calcs")
-    last_time = time.perf_counter()
+    # logger.debug(f"[{time.perf_counter() - last_time}] normal calcs")
+    # last_time = time.perf_counter()
 
     indices = get_vec_indices(face_indices)
     constraints = centered_points @ normal  # NxD @ D = N
@@ -153,7 +154,7 @@ def calc_face_constraints(positions, velocities, face_indices):
         + (centered_velocities @ dndp).swapaxes(0, 1)
         + (centered_points @ ddndpdt).swapaxes(0, 1)
     ).reshape(N, -1)
-    logger.debug(f"[{time.perf_counter() - last_time}] assembly calcs")
+    # logger.debug(f"[{time.perf_counter() - last_time}] assembly calcs")
 
     return constraints, jacobian, djacdt
 
@@ -315,10 +316,10 @@ class HydrostatArm3D:
 
     def calc_constraints(self):
         ## Calculate variable length constraints first.
-        start_time = time.perf_counter()
-        logger.debug("calc_constraints start")
+        # start_time = time.perf_counter()
+        # logger.debug("calc_constraints start")
 
-        last_time = time.perf_counter()
+        # last_time = time.perf_counter()
         # Obstacles
         collated_collision_mask = np.empty(0, dtype=bool)
         collated_nearest_points = np.empty((0, 3))
@@ -333,10 +334,10 @@ class HydrostatArm3D:
             )
         num_collisions = np.sum(collated_collision_mask)
 
-        logger.debug(
-            f"[{time.perf_counter() - last_time}] calc collisions and nearest points"
-        )
-        last_time = time.perf_counter()
+        # logger.debug(
+        #     f"[{time.perf_counter() - last_time}] calc collisions and nearest points"
+        # )
+        # last_time = time.perf_counter()
 
         # Edge length. No edge less than minimum edge length
         min_edge_length = 0.4
@@ -345,10 +346,10 @@ class HydrostatArm3D:
         edge_mask = (edge_lengths < min_edge_length).astype(bool)
         num_short = np.sum(edge_mask)
 
-        logger.debug(
-            f"[{time.perf_counter() - last_time}] calc minimum edge constraints"
-        )
-        last_time = time.perf_counter()
+        # logger.debug(
+        #     f"[{time.perf_counter() - last_time}] calc minimum edge constraints"
+        # )
+        # last_time = time.perf_counter()
 
         ## Instantiate constraint matrices
         constraints = np.zeros(
@@ -361,8 +362,8 @@ class HydrostatArm3D:
         jacobians = np.zeros((len(constraints), len(self.position_vector)))
         djacdts = np.zeros((len(constraints), len(self.position_vector)))
 
-        logger.debug(f"[{time.perf_counter() - last_time}] instantiate matrices")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] instantiate matrices")
+        # last_time = time.perf_counter()
 
         constraint_idx = 0
         if num_collisions > 0:
@@ -375,8 +376,8 @@ class HydrostatArm3D:
             jacobians[np.arange(num_collisions * 3), pos_indices] = 1
             constraint_idx += num_collisions * 3
 
-        logger.debug(f"[{time.perf_counter() - last_time}] add collision constraints")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] add collision constraints")
+        # last_time = time.perf_counter()
 
         if num_short > 0:
             edge_lengths = edge_lengths[edge_mask]
@@ -407,8 +408,8 @@ class HydrostatArm3D:
             djacdts[constraint_indices, pos_indices[:, 1]] = -dunit_edge
             constraint_idx += num_short
 
-        logger.debug(f"[{time.perf_counter() - last_time}] add short edge constraints")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] add short edge constraints")
+        # last_time = time.perf_counter()
 
         for cell_idx, cell in enumerate(self.cells):
             # Add boundary constraints
@@ -429,10 +430,10 @@ class HydrostatArm3D:
                 jacobians[constraint_idx + 2, idx * 3 + 2] = 1
                 constraint_idx += 3
 
-            logger.debug(
-                f"[{time.perf_counter() - last_time}] add cell {cell_idx} boundary constraints"
-            )
-            last_time = time.perf_counter()
+            # logger.debug(
+            #     f"[{time.perf_counter() - last_time}] add cell {cell_idx} boundary constraints"
+            # )
+            # last_time = time.perf_counter()
 
             # Add volume constraints
             volume, jacobian, djacdt = cell.volume_constraints(
@@ -444,10 +445,10 @@ class HydrostatArm3D:
                 djacdts[constraint_idx] = djacdt
                 constraint_idx += 1
 
-            logger.debug(
-                f"[{time.perf_counter() - last_time}] add cell {cell_idx} volume constraints"
-            )
-            last_time = time.perf_counter()
+            # logger.debug(
+            #     f"[{time.perf_counter() - last_time}] add cell {cell_idx} volume constraints"
+            # )
+            # last_time = time.perf_counter()
 
         # Add face constraints
         for face in self.faces:
@@ -461,13 +462,13 @@ class HydrostatArm3D:
             djacdts[constraint_idx : constraint_idx + len(face)] = face_djacdts
             constraint_idx += len(face)
 
-        logger.debug(
-            f"[{time.perf_counter() - last_time}] add cell {cell_idx} face constraints"
-        )
-        last_time = time.perf_counter()
+        # logger.debug(
+        #     f"[{time.perf_counter() - last_time}] add cell {cell_idx} face constraints"
+        # )
+        # last_time = time.perf_counter()
 
         # TODO Self Intersection
-        logger.debug(f"[{time.perf_counter() - start_time}] total constraint time")
+        # logger.debug(f"[{time.perf_counter() - start_time}] total constraint time")
         return constraints, jacobians, djacdts
 
     def set_external_forces(
@@ -592,36 +593,36 @@ class HydrostatArm3D:
     def iterate(self, dt):
         self.timestamp += dt
 
-        start_time = time.perf_counter()
-        logger.debug(f"dynamics start")
+        # start_time = time.perf_counter()
+        # logger.debug(f"dynamics start")
 
-        last_time = time.perf_counter()
+        # last_time = time.perf_counter()
         constraint, jac, djac = self.calc_constraints()
-        logger.debug(f"[{time.perf_counter() - last_time}] constraints calculated")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] constraints calculated")
+        # last_time = time.perf_counter()
 
         self.control_muscles()
-        logger.debug(f"[{time.perf_counter() - last_time}] muscle control")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] muscle control")
+        # last_time = time.perf_counter()
         active_edge_forces = self.active_edge_forces()
-        logger.debug(f"[{time.perf_counter() - last_time}] set active forces")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] set active forces")
+        # last_time = time.perf_counter()
         passive_edge_forces = self.passive_edge_forces()
-        logger.debug(f"[{time.perf_counter() - last_time}] set passive forces")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] set passive forces")
+        # last_time = time.perf_counter()
 
         # TODO figure out how to rigorously size the regularization term
         front_inverse = np.linalg.inv(
             jac @ self.inv_mass_mat @ jac.T + np.eye(len(constraint)) * 1e-6
         )
-        logger.debug(f"[{time.perf_counter() - last_time}] front inverse calculated")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] front inverse calculated")
+        # last_time = time.perf_counter()
 
         velocity_term = (
             jac @ self.inv_mass_mat @ self.damping_mat - djac
         ) @ self.velocity_vector
-        logger.debug(f"[{time.perf_counter() - last_time}] velocity component")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] velocity component")
+        # last_time = time.perf_counter()
 
         force_term = (
             jac
@@ -630,22 +631,22 @@ class HydrostatArm3D:
                 self.external_forces + active_edge_forces - passive_edge_forces
             ).flatten()
         )
-        logger.debug(f"[{time.perf_counter() - last_time}] force component")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] force component")
+        # last_time = time.perf_counter()
 
         constraint_control = (
             self.constraint_spring * constraint
             + self.constraint_damper * jac @ self.velocity_vector
         )
-        logger.debug(f"[{time.perf_counter() - last_time}] constraint control")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] constraint control")
+        # last_time = time.perf_counter()
 
         lagrange_mult = front_inverse @ (
             velocity_term - force_term - constraint_control
         )
         reactions = jac.T @ lagrange_mult
-        logger.debug(f"[{time.perf_counter() - last_time}] reactions calculated")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] reactions calculated")
+        # last_time = time.perf_counter()
 
         accel = self.inv_mass_mat @ (
             (self.external_forces + active_edge_forces).flatten()
@@ -657,7 +658,7 @@ class HydrostatArm3D:
         self.velocity_vector += accel * dt
         self.position_vector += self.velocity_vector * dt
 
-        logger.debug(f"[{time.perf_counter() - last_time}] integration calculated")
-        last_time = time.perf_counter()
+        # logger.debug(f"[{time.perf_counter() - last_time}] integration calculated")
+        # last_time = time.perf_counter()
 
-        logger.debug(f"[{time.perf_counter() - start_time}] total dynamics time")
+        # logger.debug(f"[{time.perf_counter() - start_time}] total dynamics time")
