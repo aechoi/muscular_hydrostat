@@ -57,8 +57,6 @@ class NodeDrawer3D:
                     if event.key == pygame.K_RIGHT:
                         self.structure.iterate(self.dt)
 
-                    # if event.key == pygame.K_LEFT:
-                    #     self.structure.iterate(-self.dt)
                 if event.type == pygame.KEYUP:
                     if event.key == pygame.K_LCTRL:
                         self.control_mod = False

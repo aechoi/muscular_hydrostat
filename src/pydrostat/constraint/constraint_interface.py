@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from .structure_interface import IStructure
+    from ..structure.structure_interface import IStructure
 
 
 class IConstraint(ABC):
@@ -35,8 +35,11 @@ class IConstraint(ABC):
         before running the simulation (for instance, calculating the initial volume).
 
         Args:
-            structure: A concrete instance of the structure interface."""
-        pass
+            structure: A concrete instance of the structure interface.
+
+        Raises:
+            NotImplementedError if concrete class does not implement this method."""
+        raise NotImplementedError
 
     @abstractmethod
     def calculate_constraints(
@@ -63,6 +66,6 @@ class IConstraint(ABC):
             as the Jacobian
 
         Raises:
-            None
+            NotImplementedError if concrete class does not implement this method
         """
-        pass
+        raise NotImplementedError

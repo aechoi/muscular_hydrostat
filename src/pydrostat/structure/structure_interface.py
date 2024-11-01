@@ -18,9 +18,9 @@ import numpy as np
 
 if TYPE_CHECKING:
     from ..control.controller_interface import IController
-    from .constraint_interface import IConstraint
-    from .sensor_interface import ISensor
-    from ..environment.environment import Environment
+    from ..constraint.constraint_interface import IConstraint
+    from ..sensor.sensor_interface import ISensor
+    from ..._old.environment import Environment
 
 
 class IStructure(ABC):
@@ -115,11 +115,15 @@ class IStructure(ABC):
 
         return reaction_forces
 
-    def _sense(self):
-        """Take sensor measurements and store in self.sensor_readings"""
-        sensor_data = []
+    def _sense(self) -> dict[str : np.ndarray]:
+        """Take sensor measurements for all sensors and return a dictionary of data.
+
+        Returns:
+            A dictionary of sensor data where each key is the sensor type"""
+        sensor_data = {}
         for sensor in self.sensors:
-            sensor_data.append(sensor.sense(self, self.environment))
+            sensor_data[sensor.sensor_type] = sensor.sense(self, self.environment)
+        return sensor_data
 
     @abstractmethod
     def _actuate(self, control_input):
@@ -166,7 +170,7 @@ class IStructure(ABC):
         # TODO how does controller know what is actuateable? Should this be explicitly edges?
         control_inputs = np.zeros(len(self.edges))
         if self.controller is not None:
-            control_inputs = self.controller.calc_inputs(self)
+            control_inputs = self.controller.calc_inputs(self, self._sense())
 
         # TODO may be worth formatting as some sort of a(x) + b(u) instead.
         actuation_forces = self._actuate(control_inputs)

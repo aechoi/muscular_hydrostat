@@ -1,11 +1,17 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
-from .structure_interface import IStructure
-from environment.environment import Environment
+from ..structure.structure_interface import IStructure
+from _old.environment import Environment
 
 
 class ISensor(ABC):
+    @property
+    @abstractmethod
+    def sensor_type(self) -> str:
+        """Require that sensor objects have a sensor_type string which acts as a key
+        to the controllers on what sort of sensor data is provided."""
+        pass
 
     @abstractmethod
     def sense(structure: IStructure, environment: Environment):
