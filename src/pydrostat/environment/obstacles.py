@@ -52,10 +52,6 @@ class ConvexPolytope(IObstacle):
     """
 
     def __init__(self, vertices: np.ndarray, facets: list[list[int]]):
-        """
-        Args:
-            - vertices
-        """
         self.vertices = np.array(vertices)
         self.dim = vertices.shape[-1]
         self.facets = np.array(facets)
@@ -65,7 +61,7 @@ class ConvexPolytope(IObstacle):
         centroid = np.average(self.vertices, axis=0)
 
         normal_matrix = np.empty((len(self.facets), self.dim))  # fxd
-        facet_centroids = np.empty_like(normal_matrix) # fxd
+        facet_centroids = np.empty_like(normal_matrix)  # fxd
 
         for idx, facet in enumerate(self.facets):
             facet_centroids[idx] = np.average(self.vertices[facet], axis=0)
@@ -82,17 +78,38 @@ class ConvexPolytope(IObstacle):
         return normal_matrix, facet_centroids
 
     def check_intersection(self, points: np.ndarray):
-        """Check if any points intersect with the obstacle
-        """
+        """Check if any points intersect with the obstacle"""
+        distances = self._calc_distance_to_faces(points)
+        return np.all(distances <= 0, axis=1)
+
+    def _calc_distance_to_faces(self, points: np.ndarray) -> np.ndarray:
+        """Negative distance if inside the obstacle"""
         relative_facet_vectors = (
-            points[None, :, :] - self.facet_centroids[:, None, :]
-        )  # f faces, n vertices,  d dimensions
-        distances = np.einsum("ijk,ik->ij", relative_facet_vectors, self.normal_matrix) 
-        # distances is normal vector normed with relative vector
-        # for each face, take the relative vector to the centroid, and dot with normal
-        # take the ith normal and norm with all n vertices for the ith face
-        return np.all(distances <= 0, axis=0)
-    
+            points[:, :, None] - self.facet_centroids.T[None, :, :]
+        )  # n vertices,  d dimensions, f faces
+        distances = np.diagonal(
+            self.normal_matrix @ relative_facet_vectors,
+            axis1=-2,
+            axis2=-1,
+        )  # NxF
+        return distances
+
     def calculate_constraints(self, structure: IStructure):
-        intersecting_points = structure.positions[self.check_intersection(structure.positions)]
-        if not np.all
+        distances = self._calc_distance_to_faces(structure.positions)
+        intersecting_idxs = np.all(distances <= 0, axis=1)
+        intersecting_points = structure.positions[intersecting_idxs]
+        if not intersecting_points:
+            return [], [], []
+
+        intersected_faces = np.argmin(distances[intersecting_idxs], axis=1)
+        constraints = distances[intersecting_idxs, intersected_faces]
+        num_constraints = len(constraints)
+        jacobians = np.zeros((num_constraints) + structure.positions.shape)
+        djacobian_dts = np.zeros_like(jacobians)
+
+        intersected_normals = self.normal_matrix[intersected_faces]
+        jacobians[np.arange(num_constraints), intersecting_idxs, :] = (
+            intersected_normals
+        )
+
+        return constraints, jacobians, djacobian_dts
