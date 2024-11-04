@@ -1,46 +1,8 @@
-"""This module holds the abstract class and concrete instances of obstacles.
-
-An obstacle is a special type of constraint which conditionally applies a constraint to
-vertices that intersect the interior of the obstacle. 
-
-"""
-
-from abc import ABC, abstractmethod
-
+from itertools import product
 import numpy as np
 
-from ..constraint.constraint_interface import IConstraint
-from ..structure.structure_interface import IStructure
-
-
-class IObstacle(ABC, IConstraint):
-    @abstractmethod
-    def check_intersection(self, points: np.ndarray):
-        """Check if a set of points intersect with the obstacle volume.
-
-        Args:
-            points: an nxd array of points to check for intersections where n is the
-                number of points and d is the dimension
-
-        Returns:
-            a boolean array where True indices are intersecting the obstacle
-
-        Raises:
-            NotImplementedError if not implemneted in concrete instance.
-        """
-        raise NotImplementedError
-
-    def initialize_constraint(structure: IStructure) -> None:
-        """Nothing to initialize for obstacles"""
-        pass
-
-    @abstractmethod
-    def calculate_constraints(
-        structure: IStructure,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Check if any points intersect the obstacle, if so, constrain
-        motion to be along the obstacle. Otherwise, no constraint."""
-        pass
+from ..obstacle_interface import IObstacle
+from ...structure.structure_interface import IStructure
 
 
 class ConvexPolytope(IObstacle):
@@ -113,3 +75,28 @@ class ConvexPolytope(IObstacle):
         )
 
         return constraints, jacobians, djacobian_dts
+
+
+def build_rectangular_obstacle(min_coord: list[float], max_coord: list[float]):
+    if len(min_coord) != len(max_coord):
+        raise ValueError("Min and max coords must have same dimension.")
+    dim = len(min_coord)
+    min_coord = np.array(min_coord)
+    max_coord = np.array(max_coord)
+    if np.any(max_coord <= min_coord):
+        raise ValueError(
+            "All max_coord elements must be greater than the corresponding min_coord element."
+        )
+
+    combinations = list(product([0, 1], repeat=dim))
+    vertices = min_coord + combinations * (max_coord - min_coord)
+
+    facets = []
+    for dim in range(dim):
+        fixed_values = [min_coord[dim], max_coord[dim]]
+
+        for value in fixed_values:
+            facet = [i for i, vertex in enumerate(vertices) if vertex[dim] == value]
+            facets.append(facet)
+
+    return ConvexPolytope(vertices, facets)

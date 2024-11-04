@@ -10,12 +10,10 @@ Typical usage example:
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from ..structure.structure_interface import IStructure
+from ..structure.structure_interface import IStructure
 
 
 class IConstraint(ABC):

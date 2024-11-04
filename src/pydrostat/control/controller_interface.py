@@ -1,10 +1,8 @@
 """"""
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from .structure.structure_interface import IStructure
+from ..structure.structure_interface import IStructure
 
 
 class IController(ABC):

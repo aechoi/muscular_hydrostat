@@ -216,7 +216,7 @@ class CubicArmBuilder:
 
         for level in range(height):
             new_points = base_points + np.array([0, 0, level + 1])
-            self.positions = np.vstack(self.positions, new_points)
+            self.positions = np.vstack((self.positions, new_points))
 
             index_offset = 4 * level
             self.cells.append(

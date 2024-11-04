@@ -1,13 +1,10 @@
 """A module for a simple hand-tuned gradient controller"""
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 
-from controller_interface import IController
+from .controller_interface import IController
 
-if TYPE_CHECKING:
-    from .structure.structure_interface import IStructure
+from ..structure.structure_interface import IStructure
 
 
 class HandTunedGradient(IController):
