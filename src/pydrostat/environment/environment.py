@@ -56,7 +56,8 @@ class Environment:
 
     def _calc_diffusion(self):
         food_indices = self._coord_to_idx(self.food_locations)
-        self.concentration[*food_indices.T] = self.food_magnitudes
+        concentration = self.concentration.copy()
+        concentration[*food_indices.T] = self.food_magnitudes
         self.obstacle_mask, self.adjacency_mask = self._calc_obstacle_masks()
 
         converged = False
@@ -67,16 +68,16 @@ class Environment:
 
             change = (
                 self.dt
-                * laplace(self.concentration, mode="constant")
+                * laplace(concentration, mode="constant")
                 / self.spatial_resolution**2
             )
             change[*food_indices.T] = 0
             change += (
                 self.dt
                 / self.spatial_resolution**2
-                * (self.concentration * self.adjacency_mask)
+                * (concentration * self.adjacency_mask)
             )
-            new_concentration = self.concentration + change
+            new_concentration = concentration + change
             new_concentration = new_concentration * (1 - self.obstacle_mask)
             if (
                 np.max(
@@ -93,7 +94,7 @@ class Environment:
                     / new_concentration[new_concentration != 0]
                 )
                 print(f"Loop: {loops}, Error: {error:.3f}")
-            self.concentration[:] = new_concentration
+            concentration[:] = new_concentration
 
         if loops == self.max_iterations:
             raise ValueError(
@@ -101,6 +102,7 @@ class Environment:
             )
         else:
             print("Converged!")
+            return concentration
 
     def add_obstacle(self, obstacle: IObstacle):
         self.obstacles.append(obstacle)

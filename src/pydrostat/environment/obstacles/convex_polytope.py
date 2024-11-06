@@ -1,5 +1,7 @@
 from itertools import product
+
 import numpy as np
+import OpenGL.GL as gl
 
 from ..obstacle_interface import IObstacle
 from ...structure.structure_interface import IStructure
@@ -75,6 +77,15 @@ class ConvexPolytope(IObstacle):
         )
 
         return constraints, jacobians, djacobian_dts
+
+    def draw(self):
+        vertex_difs = self.vertices[:, None, :] - self.vertices[None, :, :]
+        edge_mask = np.sum(vertex_difs != 0, axis=-1) == 1
+        edge_indices = np.where(np.triu(edge_mask, 1) > 0)
+
+        for edge in zip(edge_indices[0], edge_indices[1]):
+            for vertex in edge:
+                gl.glVertex3fv(self.vertices[vertex])
 
 
 def build_rectangular_obstacle(min_coord: list[float], max_coord: list[float]):

@@ -7,7 +7,7 @@ class VertexChemoceptors(ISensor):
     def __init__(self):
         self._sensor_type = "VertexChemoceptors"
 
-    def sense(structure: IStructure, environment: Environment):
+    def sense(self, structure: IStructure, environment: Environment):
         return environment.sample_scent(structure.positions)
 
     @property

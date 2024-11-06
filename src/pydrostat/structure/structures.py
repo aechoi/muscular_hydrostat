@@ -105,6 +105,8 @@ class Arm3D(IStructure):
                 masses[vertex] = cell.masses[v]
                 damping_rates[vertex] = cell.vertex_damping[v]
 
+        self.control_inputs = np.zeros(len(self.edges))
+
         super().__init__(
             initial_positions,
             initial_velocities,
@@ -136,6 +138,13 @@ class Arm3D(IStructure):
             - passive_edge_forces
             - self.damping_rates[:, None] * self.velocities
         )
+        # print("Explicit forces: \n", explicit_forces)
+        # print("External forces: \n", self.external_forces)
+        # print("Actuation forces: \n", actuation_forces)
+        # print("Passive Edge forces: \n", passive_edge_forces)
+        # print(
+        #     "Vertex Damping forces: \n", self.damping_rates[:, None] * self.velocities
+        # )
         return explicit_forces
 
     def _calc_passive_edge_forces(self):

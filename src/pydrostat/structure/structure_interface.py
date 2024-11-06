@@ -19,7 +19,7 @@ import numpy as np
 if TYPE_CHECKING:
     from ..control.controller_interface import IController
     from ..constraint.constraint_interface import IConstraint
-    from ..sensor.sensor_interface import ISensor
+    from ..sensing.sensor_interface import ISensor
     from ..._old.environment import Environment
 
 
@@ -82,6 +82,9 @@ class IStructure(ABC):
         self.constraint_damping_rate = constraint_damping_rate
         self.constraint_spring_rate = constraint_spring_rate
 
+        for constraint in self.constraints:
+            constraint.initialize_constraint(self)
+
     def _calculate_constraints(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         constraints = []
         jacobians = []
@@ -103,7 +106,12 @@ class IStructure(ABC):
 
         constraints, jacobians, djacobian_dts = self._calculate_constraints()
         front_inverse = np.linalg.inv(
-            np.tensordot(jacobians, self.inv_masses[None, :, None] * jacobians, 2)
+            np.tensordot(
+                jacobians,
+                np.moveaxis(self.inv_masses[None, :, None] * jacobians, 0, -1),
+                2,
+            )
+            + np.eye(len(constraints)) * 1e-6
         )
         lagrange_multipliers = -front_inverse @ (
             np.tensordot(djacobian_dts, self.velocities, 2)
@@ -112,6 +120,7 @@ class IStructure(ABC):
             + self.constraint_spring_rate * constraints
         )
         reaction_forces = np.tensordot(lagrange_multipliers, jacobians, 1)
+        # print("Reaction Forces \n", reaction_forces)
 
         return reaction_forces
 
@@ -168,12 +177,12 @@ class IStructure(ABC):
     def _calculate_acceleration(self) -> np.ndarray:
         """Calculate the acceleration of every vertex by calculating constraint forces."""
         # TODO how does controller know what is actuateable? Should this be explicitly edges?
-        control_inputs = np.zeros(len(self.edges))
+        self.control_inputs = np.zeros(len(self.edges))
         if self.controller is not None:
-            control_inputs = self.controller.calc_inputs(self, self._sense())
+            self.control_inputs = self.controller.calc_inputs(self, self._sense())
 
         # TODO may be worth formatting as some sort of a(x) + b(u) instead.
-        actuation_forces = self._actuate(control_inputs)
+        actuation_forces = self._actuate(self.control_inputs)
         explicit_forces = self._calc_explicit_forces(actuation_forces)
         reaction_forces = self._calc_reaction_forces(explicit_forces)
 

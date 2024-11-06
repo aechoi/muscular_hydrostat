@@ -36,8 +36,14 @@ class IObstacle(IConstraint):
 
     @abstractmethod
     def calculate_constraints(
+        self,
         structure: IStructure,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Check if any points intersect the obstacle, if so, constrain
         motion to be along the obstacle. Otherwise, no constraint."""
         pass
+
+    @abstractmethod
+    def draw(self):
+        """method to draw the obstacle using open gl"""
+        raise NotImplementedError

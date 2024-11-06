@@ -10,8 +10,8 @@ from ..structure.structure_interface import IStructure
 class HandTunedGradient(IController):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def calc_inputs(structure: IStructure, sensor_data: dict):
-        control_inputs = np.zeros_like(structure.edges)
+    def calc_inputs(self, structure: IStructure, sensor_data: dict):
+        control_inputs = np.zeros(len(structure.edges), dtype=float)
         if "VertexChemoceptors" not in sensor_data:
             return control_inputs
 
