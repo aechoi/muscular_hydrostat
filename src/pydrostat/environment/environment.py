@@ -126,9 +126,9 @@ class Environment:
             obstacle_mask += obstacle.check_intersection(self.grid_points).reshape(
                 self.concentration.shape
             )
-        # obstacle_mask = obstacle_mask.transpose(
-        #     1, 0, 2
-        # )  # not sure why not reshaping properly, but this fixes it
+        obstacle_mask = obstacle_mask.transpose(
+            1, 0, 2
+        )  # not sure why not reshaping properly, but this fixes it
         # TODO: see if commenting out ruins
         adjacency_kernel = generate_binary_structure(self.dim, 1)
         # adjacency_kernel = np.array(

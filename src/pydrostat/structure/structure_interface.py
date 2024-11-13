@@ -75,6 +75,8 @@ class IStructure(ABC):
         self.controller = controller
         self.environment = environment
         self.constraints = constraints
+        for obstacle in self.environment.obstacles:
+            self.constraints.append(obstacle)
         self.sensors = sensors
 
         self.external_forces = np.zeros_like(self.positions)
@@ -91,9 +93,10 @@ class IStructure(ABC):
         djacobian_dts = []
         for constraint in self.constraints:
             constraint, jacobian, djacobian_dt = constraint.calculate_constraints(self)
-            constraints.extend(constraint)
-            jacobians.append(jacobian)
-            djacobian_dts.append(djacobian_dt)
+            if len(constraint) > 0:
+                constraints.extend(constraint)
+                jacobians.append(jacobian)
+                djacobian_dts.append(djacobian_dt)
         constraints = np.array(constraints)
         jacobians = np.vstack(jacobians)
         djacobian_dts = np.vstack(djacobian_dts)

@@ -21,6 +21,9 @@ class ConvexPolytope(IObstacle):
         self.facets = np.array(facets)
         self.normal_matrix, self.facet_centroids = self._calculate_facet_data()
 
+    def initialize_constraint(self, structure: IStructure):
+        pass
+
     def _calculate_facet_data(self):
         centroid = np.average(self.vertices, axis=0)
 
@@ -59,19 +62,23 @@ class ConvexPolytope(IObstacle):
         return distances
 
     def calculate_constraints(self, structure: IStructure):
-        distances = self._calc_distance_to_faces(structure.positions)
+        distances = self._calc_distance_to_faces(structure.positions)  # shape NxF
         intersecting_idxs = np.all(distances <= 0, axis=1)
-        intersecting_points = structure.positions[intersecting_idxs]
-        if not intersecting_points:
+        intersecting_points = structure.positions[intersecting_idxs]  # shape IxD
+        if len(intersecting_points) == 0:
             return [], [], []
 
-        intersected_faces = np.argmin(distances[intersecting_idxs], axis=1)
+        intersected_faces = np.argmax(distances[intersecting_idxs], axis=1)  # shape I
         constraints = distances[intersecting_idxs, intersected_faces]
         num_constraints = len(constraints)
-        jacobians = np.zeros((num_constraints) + structure.positions.shape)
+        jacobians = np.zeros((num_constraints,) + structure.positions.shape)
         djacobian_dts = np.zeros_like(jacobians)
 
-        intersected_normals = self.normal_matrix[intersected_faces]
+        intersected_normals = self.normal_matrix[intersected_faces]  # IxD
+        # Distance = (normal^T rel_to_centroid)
+        # jacobian = normal^T . d_rel/dP
+        # d_rel/dP = 1 0 0 if point -> DxNxD
+        # jacobian = normal^T at index of point
         jacobians[np.arange(num_constraints), intersecting_idxs, :] = (
             intersected_normals
         )
