@@ -6,6 +6,8 @@ import pygame
 import sys
 import time
 
+import numpy as np
+
 from ..environment.environment import Environment
 from ..structure.structure_interface import IStructure
 
@@ -41,7 +43,7 @@ class DisplayStructure:
             if rotating:
                 gl.glRotatef(0.2, 0, 0, 1)
 
-            # loop_start = time.perf_counter()
+            loop_start = time.perf_counter()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -99,11 +101,12 @@ class DisplayStructure:
                     gl.glVertex3fv(food)
                     gl.glEnd()
 
-            # sim_start = time.perf_counter()
+            sim_start = time.perf_counter()
             if simulating:
                 for structure in self.structures:
+                    # print(np.max(np.abs(structure.positions), axis=0))
                     structure.iterate(self.dt)
-            # sim_end = time.perf_counter()
+            sim_end = time.perf_counter()
             self.draw_structures()
 
             self.draw_obstacles()
@@ -124,11 +127,11 @@ class DisplayStructure:
             pygame.display.flip()
             self.clock.tick(self.fps)
 
-            # actual_fps = self.clock.get_fps()
-            # loop_period = (time.perf_counter() - loop_start) * 1000
-            # print(
-            #     f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
-            # )
+            actual_fps = self.clock.get_fps()
+            loop_period = (time.perf_counter() - loop_start) * 1000
+            print(
+                f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
+            )
             self.frame_count += 1
 
     def draw_axes(self):
@@ -172,7 +175,4 @@ class DisplayStructure:
         gl.glColor3f(1, 0, 1)
         for obstacle in self.environment.obstacles:
             obstacle.draw()
-            # for edge in obstacle.edges:
-            #     for vertex in edge:
-            #         gl.glVertex3fv(obstacle.vertices[vertex])
         gl.glEnd()

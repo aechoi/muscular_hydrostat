@@ -138,6 +138,7 @@ class ConstantVolumeCommon(IConstraint):
         )
         djac_dts[:, 0] = -np.sum(dcofactors, axis=(1, 2))  # CxD
 
+        # TODO: try to vectorize this? Trickier than it seems
         for cell_idx, _ in enumerate(structure.cells):
             np.add.at(
                 jacobians[cell_idx], self.triangles[cell_idx], cofactors[cell_idx]
