@@ -129,9 +129,9 @@ class DisplayStructure:
 
             actual_fps = self.clock.get_fps()
             loop_period = (time.perf_counter() - loop_start) * 1000
-            # print(
-            #     f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
-            # )
+            print(
+                f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
+            )
             self.frame_count += 1
 
     def draw_axes(self):

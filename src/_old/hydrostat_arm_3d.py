@@ -491,7 +491,6 @@ class HydrostatArm3D:
         return self.muscles
 
     def control_muscles(self):
-        return
         """Set muscle actuations based using controller"""
         self.muscles = self.muscles * 0
         if self.environment is None:

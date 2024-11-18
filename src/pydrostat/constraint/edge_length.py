@@ -5,7 +5,7 @@ from ..structure.structure_interface import IStructure
 
 
 class ClipLength(IConstraint):
-    def __init__(self, min_length: float = -np.inf, max_length: float = np.inf):
+    def __init__(self, min_length: float = 0.0, max_length: float = np.inf):
         self.min_length = min_length
         self.max_length = max_length
         self.limits = np.array([self.min_length, self.max_length])

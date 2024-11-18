@@ -41,7 +41,7 @@ class Environment:
         self.limits = limits
         if limits is None:
             self.limits = [-5, 5] * (dim - 1)
-            self.limits.extend([0, 10])
+            self.limits.extend([-2, 10])
         self.limits = np.array(self.limits).reshape(self.dim, 2)
 
         coords = [np.arange(*limit, self.spatial_resolution) for limit in self.limits]

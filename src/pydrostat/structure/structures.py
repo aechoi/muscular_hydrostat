@@ -73,8 +73,8 @@ class Arm3D(IStructure):
         environment=None,
         constraints=[],
         sensors=[],
-        constraint_damping_rate=10,
-        constraint_spring_rate=500,
+        constraint_damping_rate=50,
+        constraint_spring_rate=50,
     ):
         # collect edges and faces from cells
         self.cells = cells

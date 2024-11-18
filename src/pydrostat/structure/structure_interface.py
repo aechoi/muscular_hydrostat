@@ -64,8 +64,8 @@ class IStructure(ABC):
         environment: Environment = None,
         constraints: list[IConstraint] = [],
         sensors: list[ISensor] = [],
-        constraint_damping_rate=10,
-        constraint_spring_rate=500,
+        constraint_damping_rate=1,
+        constraint_spring_rate=1,
     ):
         self.positions = initial_positions
         self.velocities = initial_velocities
