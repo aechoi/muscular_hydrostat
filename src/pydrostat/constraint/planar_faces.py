@@ -16,8 +16,8 @@ class PlanarFacesRagged(IConstraint):
         djac_dts = []
         for face in structure.faces:
 
-            points = structure.positions[face]
-            dpointsdt = structure.velocities[face]
+            points = structure.positions[face]  # VxD
+            dpointsdt = structure.velocities[face]  # VxD
             F, D = points.shape
 
             centroid = np.average(points, axis=0)
@@ -27,13 +27,13 @@ class PlanarFacesRagged(IConstraint):
 
             cov, dcdp, dcdt, ddcdpdt = self._calc_covariance_variables(
                 centered_points, centered_velocities
-            )
+            )  # DxD, VxDxDxD, DxD, VxDxDxD
 
             normal, dndp, dndt, ddndpdt = self._calc_normal_variables(
                 cov, dcdp, dcdt, ddcdpdt
             )
 
-            constraint = centered_points @ normal  # FxD @ D = F
+            constraint = centered_points @ normal  # VxD @ D = V
 
             dPdP = np.zeros((F, F, D, D))
             dPdP[np.arange(F), np.arange(F), :, :] = np.eye(D)
@@ -55,9 +55,11 @@ class PlanarFacesRagged(IConstraint):
             constraints.extend(constraint)
             jacobians.extend(jacobian)
             djac_dts.extend(djacdt)
+
         constraints = np.array(constraints)
         jacobians = np.array(jacobians)
         djac_dts = np.array(djac_dts)
+
         return constraints, jacobians, djac_dts
 
     def _calc_covariance_variables(self, centered_points, centered_velocities):
@@ -68,6 +70,9 @@ class PlanarFacesRagged(IConstraint):
         units = np.eye(3)[None, :, None, :]
 
         # dCdP
+        # centered_points: VxD
+        # units: DxD
+        # Vx-xDx- @ -xDx-xD -> VxDxDxD
         dcdp_single = centered_points[:, None, :, None] @ units
         dcdp = (dcdp_single.swapaxes(-1, -2) + dcdp_single) / dof
 
@@ -82,19 +87,19 @@ class PlanarFacesRagged(IConstraint):
         return cov, dcdp, dcdt, ddcdpdt
 
     def _calc_normal_variables(self, cov, dcdp, dcdt, ddcdpdt):
-        eigvals, eigvecs = np.linalg.eigh(cov)
+        eigvals, eigvecs = np.linalg.eigh(cov)  # D, DxD
         eigvecsT = eigvecs.T
-        min_eigvec = eigvecs[:, np.argmin(eigvals)]
+        min_eigvec = eigvecs[:, np.argmin(eigvals)]  # D
 
         normal = min_eigvec
 
         # dNdP axes 1 and 2 swapped because not used elsewhere otherwise
-        eigval_dif = eigvals[:, None] - eigvals
+        eigval_dif = eigvals[:, None] - eigvals  # DxD
         eigval_dif[:] = np.divide(1, eigval_dif, out=eigval_dif, where=eigval_dif != 0)
         min_eigval_dif = eigval_dif[0][:, None]
         dndp = (min_eigval_dif * eigvecsT @ dcdp @ min_eigvec @ eigvecsT).swapaxes(
             -2, -1
-        )
+        )  # VxDxD
 
         dvdts = np.sum(
             (-eigval_dif * (eigvecsT @ dcdt @ eigvecs))[:, :, None]
@@ -166,7 +171,9 @@ class PlanarFacesCommon(IConstraint):
         dcentroiddP = np.zeros((F, N, D, D))
         dcentroiddP[FF, self.face_indices, :, :] = np.eye(D) / V
 
-        drelative_dP = (dFdP - dcentroiddP[:, None, :, :]).swapaxes(-3, -2)  # FxVxDxNxD
+        drelative_dP = (dFdP - dcentroiddP[:, None, :, :, :]).swapaxes(
+            2, 3
+        )  # FxVxDxNxD
 
         cov, dcdp, dcdt, ddcdpdt = self._calc_covariance_variables(
             relative_positions, relative_velocities, drelative_dP
@@ -188,12 +195,15 @@ class PlanarFacesCommon(IConstraint):
         djac_dts = (
             np.sum(drelative_dP * dndt[:, None, :, None, None], axis=2)
             + np.sum(
-                relative_velocities[:, :, :, None, None] * dndp[:, None, :], axis=2
+                relative_velocities[:, :, :, None, None] * dndp[:, None, :, :, :],
+                axis=2,
             )
             + np.sum(
-                relative_positions[:, :, :, None, None] * ddndpdt[:, None, :], axis=2
+                relative_positions[:, :, :, None, None] * ddndpdt[:, None, :, :, :],
+                axis=2,
             )
         )  # FxVxNxD
+
         constraints = constraints.reshape(-1)
         jacobians = jacobians.reshape(-1, N, D)
         djac_dts = djac_dts.reshape(-1, N, D)
@@ -209,7 +219,7 @@ class PlanarFacesCommon(IConstraint):
             relative_positions: FxVxD
             relative_velocities: FxVxD
             drelative_dP: FxVxDxNxD"""
-        dof = len(relative_positions) - 1
+        dof = relative_positions.shape[1] - 1
 
         cov = relative_positions.swapaxes(-1, -2) @ relative_positions / dof
 
@@ -218,7 +228,7 @@ class PlanarFacesCommon(IConstraint):
             relative_positions[:, :, :, None, None, None]
             * drelative_dP[:, :, None, :, :, :],
             axis=(1),
-        )
+        )  # FxDxDxNxD
         dcdp = (dcdp_single + dcdp_single.swapaxes(1, 2)) / dof
 
         # dCdt
@@ -228,7 +238,7 @@ class PlanarFacesCommon(IConstraint):
         # ddCdPdt
         ddcdpdt_single = np.sum(
             relative_velocities[:, :, :, None, None, None]
-            + drelative_dP[:, :, None, :, :, :],
+            * drelative_dP[:, :, None, :, :, :],
             axis=(1),
         )
         ddcdpdt = (ddcdpdt_single + ddcdpdt_single.swapaxes(1, 2)) / dof
@@ -284,7 +294,7 @@ class PlanarFacesCommon(IConstraint):
 
         ddndpdt = (
             self._bespoke_contraction(
-                deigval_difdt[:, 0][:, None], eigvecsT, dcdp, normals, eigvecs
+                deigval_difdt[:, 0][:, :, None], eigvecsT, dcdp, normals, eigvecs
             )
             + self._bespoke_contraction(
                 min_eigval_difs, dvdts.swapaxes(-1, -2), dcdp, normals, eigvecs
@@ -293,7 +303,7 @@ class PlanarFacesCommon(IConstraint):
                 min_eigval_difs, eigvecsT, ddcdpdt, normals, eigvecs
             )
             + self._bespoke_contraction(min_eigval_difs, eigvecsT, dcdp, dndt, eigvecs)
-            + self._bespoke_contraction(min_eigval_difs, eigvecsT, dcdp, dndt, dvdts)
+            + self._bespoke_contraction(min_eigval_difs, eigvecsT, dcdp, normals, dvdts)
         )
 
         return normals, dndp, dndt, ddndpdt

@@ -39,9 +39,9 @@ class Cell3D:
         if self.fixed_indices is None:
             self.fixed_indices = []
         if self.masses is None:
-            self.masses = np.ones(len(self.vertices))
+            self.masses = np.ones(len(self.vertices)) / len(self.vertices)
         if self.vertex_damping is None:
-            self.vertex_damping = np.ones(len(self.vertices))
+            self.vertex_damping = np.ones(len(self.vertices)) / len(self.vertices)
         if self.edge_damping is None:
             self.edge_damping = np.ones(len(self.edges))
 
@@ -95,8 +95,8 @@ class Arm3D(IStructure):
                     self.faces.append(face)
         self.edges = np.array(self.edges)
 
-        # REMOVE AFTER COMPATIBLE
-        self.muscles = np.zeros(len(self.edges))
+        # # REMOVE AFTER COMPATIBLE
+        # self.muscles = np.zeros(len(self.edges))
 
         masses = np.zeros(len(initial_positions))
         damping_rates = np.zeros(len(initial_positions))
@@ -187,7 +187,9 @@ class CubicArmBuilder:
         self.sensors = []
 
         self.cells = []
-        base_points = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
+        base_points = np.array(
+            [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=float
+        )
         default_centroid = np.mean(base_points, axis=0)
         cube_vertices = np.arange(8)
         cube_edges = np.array(
@@ -233,6 +235,8 @@ class CubicArmBuilder:
                     cube_vertices + index_offset,
                     cube_edges + index_offset,
                     cube_faces + index_offset,
+                    # masses=np.ones_like(cube_vertices) / len(cube_vertices),
+                    # vertex_damping=np.ones_like(cube_vertices),
                 )
             )
 

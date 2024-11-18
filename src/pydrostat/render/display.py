@@ -129,9 +129,9 @@ class DisplayStructure:
 
             actual_fps = self.clock.get_fps()
             loop_period = (time.perf_counter() - loop_start) * 1000
-            print(
-                f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
-            )
+            # print(
+            #     f"Actual FPS: {actual_fps:.2f} | Loop Period (ms): {loop_period:.2f} | Sim Time (ms): {(sim_end - sim_start)*1000:.2f}"
+            # )
             self.frame_count += 1
 
     def draw_axes(self):
@@ -152,11 +152,14 @@ class DisplayStructure:
         gl.glEnd()
 
     def draw_structures(self):
-        for structure in self.structures:
+        color = np.array([0, 0, 0], dtype=float)
+        for idx, structure in enumerate(self.structures):
             gl.glBegin(gl.GL_LINES)
             for edge, input in zip(structure.edges, structure.control_inputs):
                 activation = input / (1 + input)
-                gl.glColor3f(1, 1 - activation, 1 - activation)
+                color[:] = 1 - activation
+                color[idx] = 1
+                gl.glColor3f(*color)
                 for vertex in edge:
                     gl.glVertex3fv(structure.positions[vertex])
             gl.glEnd()
@@ -166,7 +169,9 @@ class DisplayStructure:
             scents = self.environment.sample_scent(structure.positions)
             max_scent = max(scents)
             for vertex, scent in zip(structure.positions, scents):
-                gl.glColor3f(1, 1 - scent / max_scent, 1 - scent / max_scent)
+                color[:] = 1 - scent / max_scent
+                color[idx] = 1
+                gl.glColor3f(*color)
                 gl.glVertex3fv(vertex)
             gl.glEnd()
 
