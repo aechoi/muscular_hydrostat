@@ -40,7 +40,7 @@ class Environment:
 
         self.limits = limits
         if limits is None:
-            self.limits = [-5, 5] * (dim - 1)
+            self.limits = [-6, 6] * (dim - 1)
             self.limits.extend([-2, 10])
         self.limits = np.array(self.limits).reshape(self.dim, 2)
 

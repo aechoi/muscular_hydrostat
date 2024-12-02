@@ -93,7 +93,7 @@ class HandTunedGradient2(IController):
         sensor_data = sensor_data["VertexChemoceptors"]
 
         forward_backward_gradient = 0
-        strength_scales = np.logspace(-1, 2, len(structure.cells), base=4.5) * 1.5
+        strength_scales = np.logspace(-1, 2, len(structure.cells), base=4.5) * 1
 
         for idx, cell in enumerate(structure.cells[::-1]):
             strength_scale = strength_scales[idx]

@@ -108,7 +108,8 @@ class IStructure(ABC):
             return np.zeros_like(explicit_forces)
 
         constraints, jacobians, djacobian_dts = self._calculate_constraints()
-        front_inverse = np.linalg.inv(
+
+        front_matrix = (
             np.tensordot(
                 jacobians,
                 np.moveaxis(self.inv_masses[None, :, None] * jacobians, 0, -1),
@@ -116,12 +117,13 @@ class IStructure(ABC):
             )
             + np.eye(len(constraints)) * 1e-6
         )
-        lagrange_multipliers = -front_inverse @ (
+        dependent_array = -(
             np.tensordot(djacobian_dts, self.velocities, 2)
             + np.tensordot(jacobians, self.inv_masses[:, None] * explicit_forces, 2)
             + self.constraint_damping_rate * np.tensordot(jacobians, self.velocities, 2)
             + self.constraint_spring_rate * constraints
         )
+        lagrange_multipliers = np.linalg.solve(front_matrix, dependent_array)
         reaction_forces = np.tensordot(lagrange_multipliers, jacobians, 1)
         # print("Reaction Forces \n", reaction_forces)
 
