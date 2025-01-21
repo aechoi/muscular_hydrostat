@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .structure_interface import IStructure
+from .structure_interface import AStructure
 
 
 @dataclass
@@ -63,7 +63,7 @@ class Cell3D:
         return np.array(triangles)
 
 
-class Arm3D(IStructure):
+class Arm3D(AStructure):
     def __init__(
         self,
         initial_positions,

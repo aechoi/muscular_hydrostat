@@ -1,7 +1,7 @@
 import numpy as np
 
 from .constraint_interface import IConstraint
-from ..structure.structure_interface import IStructure
+from ..structure.structure_interface import AStructure
 
 
 class ClipLength(IConstraint):
@@ -10,10 +10,10 @@ class ClipLength(IConstraint):
         self.max_length = max_length
         self.limits = np.array([self.min_length, self.max_length])
 
-    def initialize_constraint(self, structure: IStructure):
+    def initialize_constraint(self, structure: AStructure):
         pass
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: AStructure):
         edge_points = structure.positions[structure.edges]  # shape ex2xd
         edge_lengths = np.linalg.norm(edge_points[:, 0] - edge_points[:, 1], axis=1)
         edge_mask = np.logical_or(

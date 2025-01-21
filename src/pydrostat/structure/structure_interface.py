@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ..._old.environment import Environment
 
 
-class IStructure(ABC):
+class AStructure(ABC):
     """An abstract class used as an interface for concrete structure objects.
 
     A structure is some combination of 0-d vertices, 1-d edges, 2-d faces, and 3-d
