@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 class AStructure(ABC):
-    """An abstract class used as an interface for concrete structure objects.
+    """An abstract class for a concrete structure objects.
 
     A structure is some combination of 0-d vertices, 1-d edges, 2-d faces, and 3-d
     cells. A structure is not required to have all of those components (eg 2D structures

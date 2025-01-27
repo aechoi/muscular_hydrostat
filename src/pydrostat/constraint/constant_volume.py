@@ -1,7 +1,7 @@
 import numpy as np
 
 from .constraint_interface import IConstraint
-from ..structure.structure_interface import AStructure
+from ..structure.structure import AStructure
 
 
 class ConstantVolume(IConstraint):
