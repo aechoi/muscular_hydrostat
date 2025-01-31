@@ -4,7 +4,7 @@ import numpy as np
 import OpenGL.GL as gl
 
 from ..obstacle_interface import IObstacle
-from ...structure.structure_interface import AStructure
+from ...structures.structure import AStructure
 
 
 class ConvexPolytope(IObstacle):

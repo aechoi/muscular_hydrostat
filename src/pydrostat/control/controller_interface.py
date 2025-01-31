@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from ..structure.structure_interface import AStructure
+from ..structures.structure import AStructure
 
 
 class IController(ABC):

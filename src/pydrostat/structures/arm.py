@@ -10,7 +10,7 @@ Typical use case:
 
 import numpy as np
 
-from .structure_interface import AStructure
+from .structure import AStructure
 from .cell import Cell3D
 
 class Arm3D(AStructure):

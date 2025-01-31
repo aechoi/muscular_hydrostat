@@ -18,7 +18,6 @@ class Cell3D:
     ]  # indices of points, tuples may be ragged, must be ordered counter-clockwise from outside
 
     fixed_indices: list[int] = None
-
     masses: list[float] = None
     vertex_damping: list[float] = None
     edge_damping: list[float] = None

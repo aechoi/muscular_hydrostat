@@ -1,5 +1,5 @@
 from .sensor_interface import ISensor
-from ..structure.structure_interface import AStructure
+from ..structures.structure import AStructure
 from _old.environment import Environment
 
 

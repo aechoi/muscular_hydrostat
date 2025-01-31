@@ -14,7 +14,7 @@ Typical use case:
 
 import numpy as np
 
-from .structure_interface import AStructure
+from .structure import AStructure
 from .cell import Cell3D
 from .arm import Arm3D
 

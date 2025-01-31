@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from ..structure.structure import AStructure
+from ..structures.structure import AStructure
 
 
 class IConstraint(ABC):

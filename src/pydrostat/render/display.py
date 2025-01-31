@@ -9,7 +9,7 @@ import time
 import numpy as np
 
 from ..environment.environment import Environment
-from ..structure.structure_interface import AStructure
+from ..structures.structure import AStructure
 
 
 class DisplayStructure:

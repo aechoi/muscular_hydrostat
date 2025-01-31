@@ -4,7 +4,7 @@ import numpy as np
 
 from .controller_interface import IController
 
-from ..structure.structure_interface import AStructure
+from ..structures.structure import AStructure
 
 
 class HandTunedGradient(IController):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
-from ..structure.structure_interface import AStructure
+from ..structures.structure import AStructure
 from _old.environment import Environment
 
 

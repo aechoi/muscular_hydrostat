@@ -10,7 +10,7 @@ from abc import abstractmethod
 import numpy as np
 
 from ..constraint.constraint_interface import IConstraint
-from ..structure.structure_interface import AStructure
+from ..structures.structure import AStructure
 
 
 class IObstacle(IConstraint):
