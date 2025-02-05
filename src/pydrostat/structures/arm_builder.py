@@ -29,24 +29,8 @@ class CubicArmBuilder:
 
     """
 
-    def __init__(
-        self,
-        height: int,
-        width: float = 1,
-        base_centroid: np.ndarray = np.array([0, 0, 0]),
-    ):
-        self.controller = None
-        self.environment = None
-        self.constraints = []
-        self.sensors = []
-
-        self.cells = []
-        base_points = np.array(
-            [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=float
-        )
-        default_centroid = np.mean(base_points, axis=0)
-        cube_vertices = np.arange(8)
-        cube_edges = np.array(
+    # class variables for base matrices of edges, faces, vertices, base_points
+    cube_edges = np.array(
             [
                 [0, 1],
                 [1, 2],
@@ -66,7 +50,7 @@ class CubicArmBuilder:
                 [7, 4],
             ]
         )
-        cube_faces = np.array(
+    cube_faces = np.array(
             [
                 [0, 3, 2, 1],
                 [0, 1, 5, 4],
@@ -76,38 +60,67 @@ class CubicArmBuilder:
                 [4, 5, 6, 7],
             ]
         )
+    cube_vertices = np.arange(8)
+    base_points = np.array(
+            [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=float
+        )
+    
+    def __init__(
+        self,
+        height: int,
+        width: float = 1,
+        base_centroid: np.ndarray = np.array([0, 0, 0]),
+    ):
+        self.controller = None
+        self.environment = None
+        self.constraints = []
+        self.sensors = []
+        self.cells = []
+        self.positions = CubicArmBuilder.base_points.copy()
+        self.velocities = np.zeros_like(self.positions)
+        default_centroid = np.mean(CubicArmBuilder.base_points, axis=0)
 
-        self.positions = base_points.copy()
+        self.__initialize_positions(height, width, default_centroid, base_centroid)
+        self.__initialize_cells(height)
 
-        for level in range(height):
-            new_points = base_points + np.array([0, 0, level + 1])
-            self.positions = np.vstack((self.positions, new_points))
 
+    def __initialize_cells(self, _height):
+        for level in range(_height):
             index_offset = 4 * level
             self.cells.append(
                 Cell3D(
-                    cube_vertices + index_offset,
-                    cube_edges + index_offset,
-                    cube_faces + index_offset,
+                    CubicArmBuilder.cube_vertices + index_offset,
+                    CubicArmBuilder.cube_edges + index_offset,
+                    CubicArmBuilder.cube_faces + index_offset
                     # masses=np.ones_like(cube_vertices) / len(cube_vertices),
                     # vertex_damping=np.ones_like(cube_vertices),
                 )
             )
 
-        self.velocities = np.zeros_like(self.positions)
-        self.positions = self.positions * width - default_centroid + base_centroid
 
-    def add_controller(self, controller):
+    def __initialize_positions(self, _height, _width, _default_centroid, _base_centroid):
+        for level in range(_height):
+            new_points = CubicArmBuilder.base_points + np.array([0, 0, level + 1])
+            self.positions = np.vstack((self.positions, new_points))
+
+        self.positions = self.positions * _width - _default_centroid + _base_centroid
+
+
+    def set_controller(self, controller):
         self.controller = controller
 
-    def add_environment(self, environment):
+
+    def set_environment(self, environment):
         self.environment = environment
+
 
     def add_constraint(self, constraint):
         self.constraints.append(constraint)
 
+
     def add_sensor(self, sensor):
         self.sensors.append(sensor)
+
 
     def construct_arm(self):
         return Arm3D(
