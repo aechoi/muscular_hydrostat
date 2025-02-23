@@ -3,7 +3,7 @@
    Instances of this class construct the 3D hydrostat muscular arm.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -11,26 +11,24 @@ import numpy as np
 class Cell3D:
     """A dataclass which holds shape info for 3D arms"""
 
-    vertices: list[int]  # index of vertices
+    vertices: list[float]  # index of vertices
     edges: list[list[int]]  # each tuple indexes 2 points
     faces: list[
         list[int]
     ]  # indices of points, tuples may be ragged, must be ordered counter-clockwise from outside
 
-    fixed_indices: list[int] = field(default_factory=list)
+    fixed_indices: list[int] = None
     masses: list[float] = None
     vertex_damping: list[float] = None
     edge_damping: list[float] = None
 
-    def __init__(self, vertices, edges, faces):
-        self.vertices = vertices
-        self.edges = edges
-        self.faces = faces
-        initial_arr = np.ones(len(self.vertices)) / len(self.vertices)
+    def __post_init__(self):
+        if self.fixed_indices is None:
+            self.fixed_indices = []
         if self.masses is None:
-            self.masses = initial_arr
+            self.masses = np.ones(len(self.vertices)) / len(self.vertices)
         if self.vertex_damping is None:
-            self.vertex_damping = initial_arr
+            self.vertex_damping = np.ones(len(self.vertices)) / len(self.vertices)
         if self.edge_damping is None:
             self.edge_damping = np.ones(len(self.edges))
 
@@ -45,8 +43,8 @@ class Cell3D:
         """
         triangles = []
         for face in self.faces:
-            if self.vertices[0] not in face:
-                for v1, v2 in zip(face[1:-1], face[2:]):
-                    triangles.append([face[0], v1, v2])
-
+            if self.vertices[0] in face:
+                continue
+            for v1, v2 in zip(face[1:-1], face[2:]):
+                triangles.append([face[0], v1, v2])
         return np.array(triangles)
