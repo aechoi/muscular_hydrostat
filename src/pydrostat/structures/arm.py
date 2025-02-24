@@ -13,6 +13,7 @@ import numpy as np
 from .structure import AStructure
 from .cell import Cell3D
 
+
 class Arm3D(AStructure):
     def __init__(
         self,
@@ -70,6 +71,7 @@ class Arm3D(AStructure):
             constraint_spring_rate,
         )
 
+
     def _actuate(self, control_input):
         edge_forces = np.zeros_like(self.positions)
         for edge, muscle_force in zip(self.edges, control_input):
@@ -78,6 +80,7 @@ class Arm3D(AStructure):
             edge_forces[edge[1]] -= edge_vector * muscle_force
             edge_forces[edge[0]] += edge_vector * muscle_force
         return edge_forces
+
 
     def _calc_explicit_forces(self, actuation_forces):
         passive_edge_forces = self._calc_passive_edge_forces()
@@ -96,6 +99,7 @@ class Arm3D(AStructure):
         #     "Vertex Damping forces: \n", self.damping_rates[:, None] * self.velocities
         # )
         return explicit_forces
+
 
     def _calc_passive_edge_forces(self):
         edge_forces = np.zeros_like(self.positions)
