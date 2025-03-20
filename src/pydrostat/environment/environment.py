@@ -57,7 +57,7 @@ class Environment:
     def _calc_diffusion(self):
         food_indices = self._coord_to_idx(self.food_locations)
         concentration = self.concentration.copy()
-        concentration[*food_indices.T] = self.food_magnitudes
+        concentration[tuple(food_indices.T)] = self.food_magnitudes
         self.obstacle_mask, self.adjacency_mask = self._calc_obstacle_masks()
 
         converged = False
@@ -71,7 +71,7 @@ class Environment:
                 * laplace(concentration, mode="constant")
                 / self.spatial_resolution**2
             )
-            change[*food_indices.T] = 0
+            change[tuple(food_indices.T)] = 0
             change += (
                 self.dt
                 / self.spatial_resolution**2
@@ -112,7 +112,7 @@ class Environment:
 
     def sample_scent(self, coordinates):
         indices = self._coord_to_idx(coordinates)
-        return self.concentration[*indices.T]
+        return self.concentration[tuple(indices.T)]
 
     def _coord_to_idx(self, coordinates: np.ndarray) -> np.ndarray[int]:
         """Given a coordinate in space, return the grid index"""
