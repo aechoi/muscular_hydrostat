@@ -86,8 +86,10 @@ class Environment:
     def _calc_diffusion(self):
         food_indices = self._coord_to_idx(self.food_locations)
         concentration = self.concentration.copy()
-        concentration[*food_indices.T] = self.food_magnitudes
+
+        concentration[tuple(food_indices.T)] = self.food_magnitudes
         obstacle_mask = self.__calc_obstacle_mask()
+
         converged = False
        
         loops = 0
@@ -99,6 +101,7 @@ class Environment:
             error = self.__calc_error(change, new_concentration)
             
             if (error < self.steady_state_error):
+
                 converged = True
 
             if loops % 50 == 0:
@@ -175,7 +178,7 @@ class Environment:
 
     def sample_scent(self, coordinates):
         indices = self._coord_to_idx(coordinates)
-        return self.concentration[*indices.T]
+        return self.concentration[tuple(indices.T)]
 
 
     def _coord_to_idx(self, coordinates: np.ndarray) -> np.ndarray[int]:
