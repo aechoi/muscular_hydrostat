@@ -1,1 +1,1 @@
-from . import structures
+from . import structure

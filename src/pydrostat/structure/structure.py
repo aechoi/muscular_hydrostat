@@ -14,9 +14,9 @@ Typical use case:
 
 from dataclasses import dataclass
 
-import numpy as np
+import jax.numpy as jnp
 
-from .structure_interface import IStructure
+from .constrained_dynamics import ConstrainedDynamics
 
 
 @dataclass
@@ -39,11 +39,11 @@ class Cell3D:
         if self.fixed_indices is None:
             self.fixed_indices = []
         if self.masses is None:
-            self.masses = np.ones(len(self.vertices)) / len(self.vertices)
+            self.masses = jnp.ones(len(self.vertices)) / len(self.vertices)
         if self.vertex_damping is None:
-            self.vertex_damping = np.ones(len(self.vertices)) / len(self.vertices)
+            self.vertex_damping = jnp.ones(len(self.vertices)) / len(self.vertices)
         if self.edge_damping is None:
-            self.edge_damping = np.ones(len(self.edges))
+            self.edge_damping = jnp.ones(len(self.edges))
 
         self.triangles = self.triangulate_faces()
 
@@ -52,7 +52,7 @@ class Cell3D:
         Each face is assumed to be arranged counter clockwise from the outside.
 
         Returns:
-            a tx3 np.ndarray of vertex indices for all t triangles
+            a tx3 jnp.ndarray of vertex indices for all t triangles
         """
         triangles = []
         for face in self.faces:
@@ -60,10 +60,10 @@ class Cell3D:
                 continue
             for v1, v2 in zip(face[1:-1], face[2:]):
                 triangles.append([face[0], v1, v2])
-        return np.array(triangles)
+        return jnp.array(triangles)
 
 
-class Arm3D(IStructure):
+class Arm3D(ConstrainedDynamics):
     def __init__(
         self,
         initial_positions,
@@ -71,8 +71,8 @@ class Arm3D(IStructure):
         cells: Cell3D,
         controller=None,
         environment=None,
-        constraints=[],
-        sensors=[],
+        constraints=None,
+        sensors=None,
         constraint_damping_rate=50,
         constraint_spring_rate=50,
     ):
@@ -93,38 +93,49 @@ class Arm3D(IStructure):
                 face = sorted(face)
                 if face not in self.faces:
                     self.faces.append(face)
-        self.edges = np.array(self.edges)
+        self.edges = jnp.array(self.edges)
 
-        # # REMOVE AFTER COMPATIBLE
-        # self.muscles = np.zeros(len(self.edges))
-
-        masses = np.zeros(len(initial_positions))
-        damping_rates = np.zeros(len(initial_positions))
+        masses = jnp.zeros(len(initial_positions))
+        damping = jnp.zeros(len(initial_positions))
         for cell in self.cells:
             for v, vertex in enumerate(cell.vertices):
                 masses[vertex] = cell.masses[v]
-                damping_rates[vertex] = cell.vertex_damping[v]
+                damping[vertex] = cell.vertex_damping[v]
 
-        self.control_inputs = np.zeros(len(self.edges))
+        self.sensors = sensors
+        self.control_inputs = jnp.zeros(len(self.edges))
+
+        self.environment = environment
+        for obstacle in self.environment.obstacles:
+            self.constraints.append(obstacle)
 
         super().__init__(
             initial_positions,
             initial_velocities,
             masses,
-            damping_rates,
+            damping,
             controller,
             environment,
             constraints,
-            sensors,
             constraint_damping_rate,
             constraint_spring_rate,
         )
 
+    def _sense(self) -> dict[str : jnp.ndarray]:
+        """Take sensor measurements for all sensors and return a dictionary of data.
+
+        Returns:
+            A dictionary of sensor data where each key is the sensor type"""
+        sensor_data = {}
+        for sensor in self.sensors:
+            sensor_data[sensor.sensor_type] = sensor.sense(self, self.environment)
+        return sensor_data
+
     def _actuate(self, control_input):
-        edge_forces = np.zeros_like(self.positions)
+        edge_forces = jnp.zeros_like(self.positions)
         for edge, muscle_force in zip(self.edges, control_input):
             edge_vector = self.positions[edge[1]] - self.positions[edge[0]]
-            edge_vector = edge_vector / np.linalg.norm(edge_vector)
+            edge_vector = edge_vector / jnp.linalg.norm(edge_vector)
             edge_forces[edge[1]] -= edge_vector * muscle_force
             edge_forces[edge[0]] += edge_vector * muscle_force
         return edge_forces
@@ -136,25 +147,25 @@ class Arm3D(IStructure):
             self.external_forces
             + actuation_forces
             - passive_edge_forces
-            - self.damping_rates[:, None] * self.velocities
+            - self.[:, None] * self.velocities
         )
         # print("Explicit forces: \n", explicit_forces)
         # print("External forces: \n", self.external_forces)
         # print("Actuation forces: \n", actuation_forces)
         # print("Passive Edge forces: \n", passive_edge_forces)
         # print(
-        #     "Vertex Damping forces: \n", self.damping_rates[:, None] * self.velocities
+        #     "Vertex Damping forces: \n", self.[:, None] * self.velocities
         # )
         return explicit_forces
 
     def _calc_passive_edge_forces(self):
-        edge_forces = np.zeros_like(self.positions)
+        edge_forces = jnp.zeros_like(self.positions)
         for edge, damping_rate in zip(self.edges, self.edge_damping):
             edge_vector = self.positions[edge[1]] - self.positions[edge[0]]
-            edge_unit_vector = edge_vector / np.linalg.norm(edge_vector)
+            edge_unit_vector = edge_vector / jnp.linalg.norm(edge_vector)
             relative_velocity = self.velocities[edge[1]] - self.velocities[edge[0]]
             edge_velocity = (
-                np.dot(edge_unit_vector, relative_velocity) * edge_unit_vector
+                jnp.dot(edge_unit_vector, relative_velocity) * edge_unit_vector
             )  # extension positive, contraction negative
             edge_damp_force = damping_rate * edge_velocity
             edge_forces[edge[0]] -= edge_damp_force
@@ -179,7 +190,7 @@ class CubicArmBuilder:
         self,
         height: int,
         width: float = 1,
-        base_centroid: np.ndarray = np.array([0, 0, 0]),
+        base_centroid: jnp.ndarray = jnp.array([0, 0, 0]),
     ):
         self.controller = None
         self.environment = None
@@ -187,12 +198,12 @@ class CubicArmBuilder:
         self.sensors = []
 
         self.cells = []
-        base_points = np.array(
+        base_points = jnp.array(
             [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=float
         )
-        default_centroid = np.mean(base_points, axis=0)
-        cube_vertices = np.arange(8)
-        cube_edges = np.array(
+        default_centroid = jnp.mean(base_points, axis=0)
+        cube_vertices = jnp.arange(8)
+        cube_edges = jnp.array(
             [
                 [0, 1],
                 [1, 2],
@@ -212,7 +223,7 @@ class CubicArmBuilder:
                 [7, 4],
             ]
         )
-        cube_faces = np.array(
+        cube_faces = jnp.array(
             [
                 [0, 3, 2, 1],
                 [0, 1, 5, 4],
@@ -226,8 +237,8 @@ class CubicArmBuilder:
         self.positions = base_points.copy()
 
         for level in range(height):
-            new_points = base_points + np.array([0, 0, level + 1])
-            self.positions = np.vstack((self.positions, new_points))
+            new_points = base_points + jnp.array([0, 0, level + 1])
+            self.positions = jnp.vstack((self.positions, new_points))
 
             index_offset = 4 * level
             self.cells.append(
@@ -235,12 +246,12 @@ class CubicArmBuilder:
                     cube_vertices + index_offset,
                     cube_edges + index_offset,
                     cube_faces + index_offset,
-                    # masses=np.ones_like(cube_vertices) / len(cube_vertices),
-                    # vertex_damping=np.ones_like(cube_vertices),
+                    # masses=jnp.ones_like(cube_vertices) / len(cube_vertices),
+                    # vertex_damping=jnp.ones_like(cube_vertices),
                 )
             )
 
-        self.velocities = np.zeros_like(self.positions)
+        self.velocities = jnp.zeros_like(self.positions)
         self.positions = self.positions * width - default_centroid + base_centroid
 
     def add_controller(self, controller):
