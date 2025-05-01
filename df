@@ -1,0 +1,78 @@
+[33m5887e61[m[33m ([m[1;36mHEAD -> [m[1;32mstructure_refactoring[m[33m)[m rename IStructure to AStructure and split structures.py
+[33m7b6efb9[m[33m ([m[1;32mrefactoring[m[33m, [m[1;32mmain[m[33m)[m minor changes
+[33m122778a[m[33m ([m[1;31morigin/refactoring[m[33m)[m Refactor environment.py
+[33med8f7b9[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m replace matrix inversion with iterative solve
+[33mca91950[m clear notebook output
+[33mf3f904c[m adjust constraint dynamics in order to achieve better stability
+[33m87d3585[m fix innaccuracy of planar face common constraint
+[33m871ac7a[m add common face planar constraint. The volume constraint is still unstable for some reason, even unvectorized, need to check
+[33mbc6cf59[m add vectorized constant volume constraint assuming common cell structure
+[33mde4fa65[m clear outputs, gahhhh
+[33m34898b7[m make constraint fixes, now stable and should be on par with old model
+[33m085a31a[m combining constraints leads to unstable constraint convergence if the combination is positive semidefinite
+[33mae3b384[m add ragged planar constraint, still unstable, seems to be fixed constraint
+[33mdce4984[m debug integration of arm components, simulation running but unstable due to no face constraints
+[33m71ebb68[m remove notebook outputs
+[33m12ea5d2[m complete implementation of environment classes. Fix import bugs for controller and sensor based classes
+[33m4ac6042[m add polytope obstacle constraint data
+[33m16c3c76[m reorganize modules and initial commit of concrete instances
+[33m10a2972[m create new clean demo
+[33m2e8752d[m move old files to new _old directory for isolation from new code
+[33m869f3db[m clean notebook. gaaah
+[33mba891b6[m add rendering capabilities to save videos of simulation
+[33mf038cbe[m merge conflict
+[33m9a42671[m add controller and sensor interfaces. add initial commit of concrete structure class. Able to display
+[33mdc7493d[m comment out logging. Need to add a condition for it instead
+[33mabaec0e[m add interfaces for structure and constraints
+[33m5e02159[m add setup instructions to dev guide
+[33m75275ea[m move obstacle to environment directory. Fix resulting issues
+[33mfe5cede[m separate 2D and 3D hydrostat simulation demos. Move to top level simulation and fix imports
+[33mfcfa9c8[m add additional project structure in preparation for refactoring
+[33m8780e41[m move src files into package
+[33ma34a036[m add some package metadata
+[33m1d3b1d2[m clear notebook output
+[33mfea06df[m remove old comments
+[33m63b3dce[m vectorize volume constraint calculation. Begin attempt at vectorized face constraint calculation (ragged is hard)
+[33m7e1c9e6[m fix bug with short edge constraint jacobian. Vectorize short edge constraint calculations
+[33m9fc5046[m vectorize obstacles, begin vectorization of edge lengths, need to do jacobian time derivative
+[33m3a8c77e[m annotate some possible speed ups and vectorizations for later
+[33m1abed27[m replace einsum with built in numpy functions. Use distribution to reduce calculations
+[33m20619d4[m add logging for timings
+[33mfbacea8[m add log files to ignore
+[33m6534e39[m add normalized mass and viscous damping properties. Retune controller
+[33m77f8946[m add minimum length constraint, better stability
+[33m6276f00[m implement environment in muscular hydrostat 3d. Current setup has fast and stable arm control
+[33mf835cb7[m add 3d obstacles and environment module to handle scent propogation. Need to implement arm interaction. May want to add overarching simulation handler
+[33m5a69045[m did some hand tweaking of controller
+[33mc7e7e11[m add rudimentary side to side control
+[33m1c163e1[m add rudimentary contraction/extension control
+[33m174f784[m remove redundant obsolete calculations
+[33m5eb7f8c[m fix triangle ordering. collect constraint calculations into single function
+[33m9bc5e82[m clean notebook
+[33m8491fab[m found bug where triangulated faces do not have properly ordered vertices. Need to fix
+[33mf6ae87a[m add cubic arm generation
+[33meafa6ec[m add working face constraints
+[33m76bf389[m add vectorized constraint calculations. Final calculations have bug where jacobians are not calculated for every constraint
+[33m51ba4d1[m add a bunch of prototype code, plane dynamics almost done but need to add in eigenvalue derivative into double partial deriv of normal
+[33mcd36b96[m add prototype vectorized jacobian calculation
+[33m64778cf[m add face constraint calculations that seem to work in isolation
+[33m4909eb7[m initial commit of 3d hydrostat classes
+[33m1dad9ab[m update hydrostat_arm.py to include general cell volume calculation and jacobian calculation to enable cells other than simplices
+[33m3955cec[m delete obsolete hydrostat cell code
+[33m943f084[m add .vscode to .gitignore
+[33m08a9830[m delete old mp4 animations
+[33m9f15159[m add random convex polygon generation to intersection test. Add offset buffer to closest point to stay outside of object
+[33m466db9c[m make into python project, add in testing architecture
+[33m3f0e774[m initial commit of obstacle class. Add convex obstacle constraints in hydrostat arm. Add obstacle drawing in draw_nodes.
+[33m3724a4b[m add fps tracker, remove bespoke colab version of draw_nodes and instead use boolean argument
+[33m9ddf0f9[m edits to make compatible with collab
+[33ma6627e4[m some hand tuning. Need to come up with some unit tests for stability instead of manually running every time
+[33m701db31[m added edge damping
+[33m8ba3a91[m bug fixed from volume constraint. Some closed loop control frameworks. Will be starting branches now
+[33m9882b40[m normalize replay force vector
+[33mb8deb1e[m implement logger and replay method to store animations and simulations
+[33mcbddb9c[m add constrained dynamics hydrostat arm. draw_nodes requires update to allow for animation and interactability
+[33m2001863[m add pycache to gitignore
+[33m6f2a2fe[m add constrained dynamic simulation
+[33m85b18d6[m change .gitignore encoding to UTF-8
+[33md44f52f[m add .gitignore and initial doc and src directories

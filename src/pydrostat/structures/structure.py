@@ -14,13 +14,13 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import numpy as np
-
+from .cell import Cell3D
 
 if TYPE_CHECKING:
     from ..control.controller_interface import IController
     from ..constraint.constraint_interface import IConstraint
     from ..sensing.sensor_interface import ISensor
-    from ..._old.environment import Environment
+    from ...pydrostat.environment.environment import Environment
 
 
 class AStructure(ABC):
@@ -58,8 +58,7 @@ class AStructure(ABC):
         self,
         initial_positions: np.ndarray,
         initial_velocities: np.ndarray,
-        masses: np.ndarray,
-        damping_rates: np.ndarray,
+        cells: Cell3D,
         controller: IController = None,
         environment: Environment = None,
         constraints: list[IConstraint] = [],
@@ -69,23 +68,26 @@ class AStructure(ABC):
     ):
         self.positions = initial_positions
         self.velocities = initial_velocities
-        self.inv_masses = 1 / masses
-        self.damping_rates = damping_rates
-
+        self.cells = cells
         self.controller = controller
         self.environment = environment
         self.constraints = constraints
-        for obstacle in self.environment.obstacles:
-            self.constraints.append(obstacle)
         self.sensors = sensors
-
-        self.external_forces = np.zeros_like(self.positions)
-
         self.constraint_damping_rate = constraint_damping_rate
         self.constraint_spring_rate = constraint_spring_rate
 
+        self.masses = np.zeros(len(initial_positions))
+        self.damping_rates = np.zeros(len(initial_positions))
+        self.inv_masses = 1 / self.masses
+
+        for obstacle in self.environment.obstacles:
+            self.constraints.append(obstacle)
+
+        self.external_forces = np.zeros_like(self.positions)
+
         for constraint in self.constraints:
             constraint.initialize_constraint(self)
+
 
     def _calculate_constraints(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         constraints = []
