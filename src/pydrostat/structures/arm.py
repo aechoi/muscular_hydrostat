@@ -27,18 +27,6 @@ class Arm3D(AStructure):
         constraint_damping_rate=50,
         constraint_spring_rate=50,
     ):
-        super().__init__(
-            initial_positions,
-            initial_velocities,
-            cells,
-            controller,
-            environment,
-            constraints,
-            sensors,
-            constraint_damping_rate,
-            constraint_spring_rate,
-        )
-
         # collect edges and faces from cells
         self.cells = cells
         self.edges = []
@@ -61,12 +49,27 @@ class Arm3D(AStructure):
         # # REMOVE AFTER COMPATIBLE
         # self.muscles = np.zeros(len(self.edges))
 
+        masses = np.zeros(len(initial_positions))
+        damping_rates = np.zeros(len(initial_positions))
         for cell in self.cells:
             for v, vertex in enumerate(cell.vertices):
-                super().masses[vertex] = cell.masses[v]
-                super().damping_rates[vertex] = cell.vertex_damping[v]
+                masses[vertex] = cell.masses[v]
+                damping_rates[vertex] = cell.vertex_damping[v]
 
         self.control_inputs = np.zeros(len(self.edges))
+
+        super().__init__(
+            initial_positions,
+            initial_velocities,
+            masses,
+            damping_rates,
+            controller,
+            environment,
+            constraints,
+            sensors,
+            constraint_damping_rate,
+            constraint_spring_rate,
+        )
 
 
     def _actuate(self, control_input):
