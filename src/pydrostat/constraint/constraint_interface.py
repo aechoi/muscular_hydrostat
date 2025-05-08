@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class IConstraint(ABC):
@@ -26,7 +26,7 @@ class IConstraint(ABC):
     between the calculation of others.
     """
 
-    def initialize_constraint(structure: IStructure) -> None:
+    def initialize_constraint(structure: AStructure) -> None:
         """Initialize the constraint by calculating whatever data is needed
 
         Certain constraints, such as constant volume, require a calculation to be done
@@ -41,7 +41,7 @@ class IConstraint(ABC):
 
     @abstractmethod
     def calculate_constraints(
-        structure: IStructure,
+        structure: AStructure,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Returns the constraint vector, the Jacobian, and the time derivative of the
         Jacobian.

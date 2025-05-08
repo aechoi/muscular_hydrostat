@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 from _old.environment import Environment
 
 
@@ -14,7 +14,7 @@ class ISensor(ABC):
         pass
 
     @abstractmethod
-    def sense(structure: IStructure, environment: Environment):
+    def sense(structure: AStructure, environment: Environment):
         """Sense something about the environment using the position of sesnors on the
         structure.
 

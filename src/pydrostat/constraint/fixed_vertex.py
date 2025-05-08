@@ -1,17 +1,17 @@
 import numpy as np
 
 from .constraint_interface import IConstraint
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class FixedVertex(IConstraint):
     def __init__(self, fixed_vertices):
         self.fixed_vertices = np.array(fixed_vertices)
 
-    def initialize_constraint(self, structure: IStructure):
+    def initialize_constraint(self, structure: AStructure):
         self.initial_positions = structure.positions[self.fixed_vertices]
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: AStructure):
         # num_constraints = len(self.fixed_vertices)
         # relative_vecs = (
         #     structure.positions[self.fixed_vertices] - self.initial_positions

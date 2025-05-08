@@ -9,11 +9,11 @@ import time
 import numpy as np
 
 from ..environment.environment import Environment
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class DisplayStructure:
-    def __init__(self, environment: Environment, structures: list[IStructure], dt=0.02):
+    def __init__(self, environment: Environment, structures: list[AStructure], dt=0.02):
         self.environment = environment
         self.structures = structures
         self.dt = dt

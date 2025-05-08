@@ -1,7 +1,7 @@
 import numpy as np
 
 from .constraint_interface import IConstraint
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class ConstantVolume(IConstraint):
@@ -11,7 +11,7 @@ class ConstantVolume(IConstraint):
     def __init__(self):
         self.initial_volumes = None
 
-    def initialize_constraint(self, structure: IStructure):
+    def initialize_constraint(self, structure: AStructure):
         self.initial_volumes = []
         for cell in structure.cells:
             apex_position = structure.positions[cell.vertices[0]]
@@ -25,7 +25,7 @@ class ConstantVolume(IConstraint):
 
         self.initial_volumes = np.array(self.initial_volumes)
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: AStructure):
         if self.initial_volumes is None:
             raise ValueError(
                 "Initial volumes have not been calculated. Call initialize_constraint()"
@@ -88,7 +88,7 @@ class ConstantVolumeCommon(IConstraint):
     def __init__(self):
         self.initial_volumes = None
 
-    def initialize_constraint(self, structure: IStructure):
+    def initialize_constraint(self, structure: AStructure):
         self.vertices = np.array([cell.vertices for cell in structure.cells])  # CxV
         self.triangles = np.array([cell.triangles for cell in structure.cells])  # CxTxS
 
@@ -99,7 +99,7 @@ class ConstantVolumeCommon(IConstraint):
         tet_volumes = np.linalg.det(relative_positions)  # CxT
         self.initial_volumes = np.sum(tet_volumes, axis=1)  # C
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: AStructure):
         if self.initial_volumes is None:
             raise ValueError(
                 "Initial volumes have not been calculated. Call initialize_constraint()"

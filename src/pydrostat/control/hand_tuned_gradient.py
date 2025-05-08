@@ -4,13 +4,13 @@ import numpy as np
 
 from .controller_interface import IController
 
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class HandTunedGradient(IController):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def calc_inputs(self, structure: IStructure, sensor_data: dict):
+    def calc_inputs(self, structure: AStructure, sensor_data: dict):
         control_inputs = np.zeros(len(structure.edges), dtype=float)
         if "VertexChemoceptors" not in sensor_data:
             return control_inputs
@@ -85,7 +85,7 @@ class HandTunedGradient(IController):
 class HandTunedGradient2(IController):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def calc_inputs(self, structure: IStructure, sensor_data: dict):
+    def calc_inputs(self, structure: AStructure, sensor_data: dict):
         control_inputs = np.zeros(len(structure.edges), dtype=float)
         if "VertexChemoceptors" not in sensor_data:
             return control_inputs

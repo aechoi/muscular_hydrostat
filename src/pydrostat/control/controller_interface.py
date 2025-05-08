@@ -2,13 +2,13 @@
 
 from abc import ABC, abstractmethod
 
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class IController(ABC):
 
     @abstractmethod
-    def calc_inputs(structure: IStructure, sensor_data: dict):
+    def calc_inputs(structure: AStructure, sensor_data: dict):
         """Calculates and returns a vector of control inputs for the structure
         to implement. Must be the same shape as the structure actuators.
 

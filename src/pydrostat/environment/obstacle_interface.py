@@ -10,7 +10,7 @@ from abc import abstractmethod
 import numpy as np
 
 from ..constraint.constraint_interface import IConstraint
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 
 
 class IObstacle(IConstraint):
@@ -30,14 +30,14 @@ class IObstacle(IConstraint):
         """
         raise NotImplementedError
 
-    def initialize_constraint(structure: IStructure) -> None:
+    def initialize_constraint(structure: AStructure) -> None:
         """Nothing to initialize for obstacles"""
         pass
 
     @abstractmethod
     def calculate_constraints(
         self,
-        structure: IStructure,
+        structure: AStructure,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Check if any points intersect the obstacle, if so, constrain
         motion to be along the obstacle. Otherwise, no constraint."""

@@ -1,5 +1,5 @@
 from .sensor_interface import ISensor
-from ..structure.structure_interface import IStructure
+from ..structures.structure import AStructure
 from _old.environment import Environment
 
 
@@ -7,7 +7,7 @@ class VertexChemoceptors(ISensor):
     def __init__(self):
         self._sensor_type = "VertexChemoceptors"
 
-    def sense(self, structure: IStructure, environment: Environment):
+    def sense(self, structure: AStructure, environment: Environment):
         return environment.sample_scent(structure.positions)
 
     @property
