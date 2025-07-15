@@ -1,16 +1,16 @@
 import numpy as np
 
 from .constraint_interface import IConstraint
-from ..structure.structure_interface import IStructure
+from pydrostat.model.structure import Arm3D
 
 
 class PlanarFacesRagged(IConstraint):
     """Does not assume each face has the same number of vertices"""
 
-    def initialize_constraint(self, structure: IStructure):
+    def initialize_constraint(self, structure: Arm3D):
         pass
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: Arm3D):
         constraints = []
         jacobians = []
         djac_dts = []
@@ -148,7 +148,7 @@ class PlanarFacesCommon(IConstraint):
                 )
         self.face_indices = np.array(structure.faces)
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: Arm3D):
         N, D = structure.positions.shape
         F, V = self.face_indices.shape
 

@@ -9,11 +9,11 @@ import time
 import numpy as np
 
 from ..environment.environment import Environment
-from ..structure.structure_interface import IStructure
+from pydrostat.model.structure import Arm3D
 
 
 class DisplayStructure:
-    def __init__(self, environment: Environment, structures: list[IStructure], dt=0.02):
+    def __init__(self, environment: Environment, structures: list[Arm3D], dt=0.02):
         self.environment = environment
         self.structures = structures
         self.dt = dt
@@ -161,7 +161,7 @@ class DisplayStructure:
                 color[idx] = 1
                 gl.glColor3f(*color)
                 for vertex in edge:
-                    gl.glVertex3fv(structure.positions[vertex])
+                    gl.glVertex3f(*structure.positions[vertex])
             gl.glEnd()
 
             gl.glPointSize(10.0)
@@ -172,7 +172,7 @@ class DisplayStructure:
                 color[:] = 1 - scent / max_scent
                 color[idx] = 1
                 gl.glColor3f(*color)
-                gl.glVertex3fv(vertex)
+                gl.glVertex3f(*vertex)
             gl.glEnd()
 
     def draw_obstacles(self):

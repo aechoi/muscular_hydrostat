@@ -1,5 +1,5 @@
 """This module holds concrete implementations of the structure interface. These
-include but are not limited to 
+include but are not limited to
     - cuboid arms
     - single cells
     - iso-cylinders
@@ -14,8 +14,8 @@ Typical use case:
 
 from dataclasses import dataclass
 
-import jax.numpy as jnp
 
+import jax.numpy as jnp
 from .constrained_dynamics import ConstrainedDynamics
 
 
@@ -29,15 +29,11 @@ class Cell3D:
         list[int]
     ]  # indices of points, tuples may be ragged, must be ordered counter-clockwise from outside
 
-    fixed_indices: list[int] = None
-
     masses: list[float] = None
     vertex_damping: list[float] = None
     edge_damping: list[float] = None
 
     def __post_init__(self):
-        if self.fixed_indices is None:
-            self.fixed_indices = []
         if self.masses is None:
             self.masses = jnp.ones(len(self.vertices)) / len(self.vertices)
         if self.vertex_damping is None:
@@ -64,25 +60,26 @@ class Cell3D:
 
 
 class Arm3D(ConstrainedDynamics):
+    """A concrete instance of ConstrainedDynamics that models a 3D muscular hydrostat
+    with cells of constant volume."""
+
     def __init__(
         self,
-        initial_positions,
-        initial_velocities,
         cells: Cell3D,
-        controller=None,
-        environment=None,
         constraints=None,
-        sensors=None,
-        constraint_damping_rate=50,
-        constraint_spring_rate=50,
     ):
         # collect edges and faces from cells
         self.cells = cells
+        self.vertices = []
         self.edges = []
         self.faces = []
         self.edge_damping = []
 
         for cell in self.cells:
+            for vertex in cell.vertices:
+                if vertex not in self.vertices:
+                    self.vertices.append(vertex)
+
             for e, edge in enumerate(cell.edges):
                 edge = sorted(edge)
                 if edge not in self.edges:
@@ -93,83 +90,58 @@ class Arm3D(ConstrainedDynamics):
                 face = sorted(face)
                 if face not in self.faces:
                     self.faces.append(face)
+
+        num_particles = len(self.vertices)
         self.edges = jnp.array(self.edges)
 
-        masses = jnp.zeros(len(initial_positions))
-        damping = jnp.zeros(len(initial_positions))
+        masses = jnp.zeros(num_particles)
+        damping = jnp.zeros(num_particles)
         for cell in self.cells:
             for v, vertex in enumerate(cell.vertices):
-                masses[vertex] = cell.masses[v]
-                damping[vertex] = cell.vertex_damping[v]
+                masses = masses.at[vertex].set(cell.masses[v])
+                damping = damping.at[vertex].set(cell.vertex_damping[v])
 
-        self.sensors = sensors
         self.control_inputs = jnp.zeros(len(self.edges))
 
-        self.environment = environment
-        for obstacle in self.environment.obstacles:
-            self.constraints.append(obstacle)
+        self.constraints = constraints if constraints is not None else []
 
         super().__init__(
-            initial_positions,
-            initial_velocities,
+            num_particles,
             masses,
-            damping,
-            controller,
-            environment,
             constraints,
-            constraint_damping_rate,
-            constraint_spring_rate,
         )
 
-    def _sense(self) -> dict[str : jnp.ndarray]:
-        """Take sensor measurements for all sensors and return a dictionary of data.
-
-        Returns:
-            A dictionary of sensor data where each key is the sensor type"""
-        sensor_data = {}
-        for sensor in self.sensors:
-            sensor_data[sensor.sensor_type] = sensor.sense(self, self.environment)
-        return sensor_data
-
-    def _actuate(self, control_input):
-        edge_forces = jnp.zeros_like(self.positions)
+    def _calc_actuation_forces(self, state, control_input):
+        pos, vel = self.state2posvel(state)
+        edge_forces = jnp.zeros_like(pos)
         for edge, muscle_force in zip(self.edges, control_input):
-            edge_vector = self.positions[edge[1]] - self.positions[edge[0]]
+            edge_vector = pos[edge[1]] - pos[edge[0]]
             edge_vector = edge_vector / jnp.linalg.norm(edge_vector)
-            edge_forces[edge[1]] -= edge_vector * muscle_force
-            edge_forces[edge[0]] += edge_vector * muscle_force
+            edge_forces = edge_forces.at[edge[1]].add(-edge_vector * muscle_force)
+            edge_forces = edge_forces.at[edge[0]].add(edge_vector * muscle_force)
         return edge_forces
 
-    def _calc_explicit_forces(self, actuation_forces):
-        passive_edge_forces = self._calc_passive_edge_forces()
+    def _calc_passive_forces(self, state):
+        pos, vel = self.state2posvel(state)
+        passive_forces = []
+        passive_edge_forces = self._calc_passive_edge_forces(pos, vel)
+        passive_forces.append(passive_edge_forces)
+        passive_forces.append(self.edge_damping[:, None] * vel)
+        return passive_forces
 
-        explicit_forces = (
-            self.external_forces
-            + actuation_forces
-            - passive_edge_forces
-            - self.[:, None] * self.velocities
-        )
-        # print("Explicit forces: \n", explicit_forces)
-        # print("External forces: \n", self.external_forces)
-        # print("Actuation forces: \n", actuation_forces)
-        # print("Passive Edge forces: \n", passive_edge_forces)
-        # print(
-        #     "Vertex Damping forces: \n", self.[:, None] * self.velocities
-        # )
-        return explicit_forces
-
-    def _calc_passive_edge_forces(self):
-        edge_forces = jnp.zeros_like(self.positions)
+    def _calc_passive_edge_forces(self, pos, vel):
+        """Calculate the damping forces along edges."""
+        edge_forces = jnp.zeros_like(pos)
         for edge, damping_rate in zip(self.edges, self.edge_damping):
-            edge_vector = self.positions[edge[1]] - self.positions[edge[0]]
+            edge_vector = pos[edge[1]] - pos[edge[0]]
             edge_unit_vector = edge_vector / jnp.linalg.norm(edge_vector)
-            relative_velocity = self.velocities[edge[1]] - self.velocities[edge[0]]
+            relative_velocity = vel[edge[1]] - vel[edge[0]]
             edge_velocity = (
                 jnp.dot(edge_unit_vector, relative_velocity) * edge_unit_vector
             )  # extension positive, contraction negative
             edge_damp_force = damping_rate * edge_velocity
-            edge_forces[edge[0]] -= edge_damp_force
-            edge_forces[edge[1]] += edge_damp_force
+            edge_forces = edge_forces.at[edge[0]].add(-edge_damp_force)
+            edge_forces = edge_forces.at[edge[1]].add(edge_damp_force)
 
         return edge_forces
 
@@ -179,7 +151,6 @@ class CubicArmBuilder:
 
     create cell structure
     choose controller
-    set environment
     add multiple constraints
     add multiple sensors
 
@@ -192,8 +163,6 @@ class CubicArmBuilder:
         width: float = 1,
         base_centroid: jnp.ndarray = jnp.array([0, 0, 0]),
     ):
-        self.controller = None
-        self.environment = None
         self.constraints = []
         self.sensors = []
 
@@ -254,12 +223,6 @@ class CubicArmBuilder:
         self.velocities = jnp.zeros_like(self.positions)
         self.positions = self.positions * width - default_centroid + base_centroid
 
-    def add_controller(self, controller):
-        self.controller = controller
-
-    def add_environment(self, environment):
-        self.environment = environment
-
     def add_constraint(self, constraint):
         self.constraints.append(constraint)
 
@@ -268,11 +231,7 @@ class CubicArmBuilder:
 
     def construct_arm(self):
         return Arm3D(
-            self.positions,
-            self.velocities,
             self.cells,
-            self.controller,
-            self.environment,
             self.constraints,
             self.sensors,
         )

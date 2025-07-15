@@ -2,15 +2,16 @@
 
 import numpy as np
 
-from .controller_interface import IController
+from .policy_interface import IPolicy
 
-from ..structure.structure_interface import IStructure
+from pydrostat.model.structure import Arm3D
 
 
-class HandTunedGradient(IController):
+class HandTunedGradient(IPolicy):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def calc_inputs(self, structure: IStructure, sensor_data: dict):
+    def __call__(self, structure: Arm3D, t: float) -> np.ndarray:
+        sensor_data = structure.sense()
         control_inputs = np.zeros(len(structure.edges), dtype=float)
         if "VertexChemoceptors" not in sensor_data:
             return control_inputs
@@ -85,7 +86,8 @@ class HandTunedGradient(IController):
 class HandTunedGradient2(IController):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def calc_inputs(self, structure: IStructure, sensor_data: dict):
+    def policy(self, structure: Arm3D):
+        sensor_data = structure.sense()
         control_inputs = np.zeros(len(structure.edges), dtype=float)
         if "VertexChemoceptors" not in sensor_data:
             return control_inputs

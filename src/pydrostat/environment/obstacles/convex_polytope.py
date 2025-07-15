@@ -4,7 +4,7 @@ import numpy as np
 import OpenGL.GL as gl
 
 from ..obstacle_interface import IObstacle
-from ...structure.structure_interface import IStructure
+from pydrostat.model.structure import Arm3D
 
 
 class ConvexPolytope(IObstacle):
@@ -21,7 +21,7 @@ class ConvexPolytope(IObstacle):
         self.facets = np.array(facets)
         self.normal_matrix, self.facet_centroids = self._calculate_facet_data()
 
-    def initialize_constraint(self, structure: IStructure):
+    def initialize_constraint(self, structure: Arm3D):
         pass
 
     def _calculate_facet_data(self):
@@ -61,7 +61,7 @@ class ConvexPolytope(IObstacle):
         )  # NxF
         return distances
 
-    def calculate_constraints(self, structure: IStructure):
+    def calculate_constraints(self, structure: Arm3D):
         distances = self._calc_distance_to_faces(structure.positions)  # shape NxF
         intersecting_idxs = np.all(distances <= 0, axis=1)
         intersecting_points = structure.positions[intersecting_idxs]  # shape IxD

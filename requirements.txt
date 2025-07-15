@@ -8,3 +8,4 @@ pyopengl
 scipy
 ipykernel
 pytest
+jax

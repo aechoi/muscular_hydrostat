@@ -2,20 +2,18 @@
 
 from abc import ABC, abstractmethod
 
-from ..structure.structure_interface import IStructure
+from pydrostat.model.structure import Arm3D
 
 
-class IController(ABC):
+class IPolicy(ABC):
 
     @abstractmethod
-    def calc_inputs(structure: IStructure, sensor_data: dict):
+    def __call__(self, structure: Arm3D, t: float) -> list[float]:
         """Calculates and returns a vector of control inputs for the structure
         to implement. Must be the same shape as the structure actuators.
 
         Args:
             structure: a structure object which is being controlled
-            sensor_data: a dictionary with sensor type strings as keys and data as the
-                value.
 
         Returns:
             an np.ndarray of control inputs which have the same shape as the actuators
