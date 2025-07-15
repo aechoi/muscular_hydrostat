@@ -1,16 +1,6 @@
-"""This module holds concrete implementations of the structure interface. These
-include but are not limited to
-    - cuboid arms
-    - single cells
-    - iso-cylinders
-
-Typical use case:
-    # In a simulator
-    structure = structures.arm_3d(...)
-    while simulating:
-        structure.iterate(dt)
-        # code to display structure
-"""
+"""This module defines a concrete instance of the ConstrainedDynamics class which models
+a structure with vertices, edges, and faces. The explicit forces include vertex damping,
+and edge damping."""
 
 from dataclasses import dataclass
 
@@ -73,9 +63,9 @@ class Arm3D(ConstrainedDynamics):
     def __init__(
         self,
         cells: Cell3D,
+        initial_pos: jnp.ndarray,
         constraints=None,
     ):
-        # collect edges and faces from cells
         self.cells = cells
         vertices = []
         self.edges = []
@@ -100,6 +90,7 @@ class Arm3D(ConstrainedDynamics):
 
         num_particles = len(vertices)
         self.edges = jnp.array(self.edges)
+        num_controls = len(self.edges)
 
         masses = jnp.zeros(num_particles)
         self.vertex_damping = jnp.zeros(num_particles)
@@ -113,7 +104,8 @@ class Arm3D(ConstrainedDynamics):
         self.constraints = constraints if constraints is not None else []
 
         super().__init__(
-            num_particles,
+            initial_pos,
+            num_controls,
             masses,
             constraints,
         )
@@ -183,12 +175,7 @@ class Arm3D(ConstrainedDynamics):
 class CubicArmBuilder:
     """A builder for 3D cubic arms
 
-    create cell structure
-    choose controller
-    add multiple constraints
-    add multiple sensors
-
-
+    Creates a stack of cubic cells. Edges are along the cube edges and across diagonals.
     """
 
     def __init__(
@@ -202,9 +189,9 @@ class CubicArmBuilder:
 
         self.cells = []
         base_points = jnp.array(
-            [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=float
+            [[0, 0, 0], [width, 0, 0], [width, width, 0], [0, width, 0]], dtype=float
         )
-        default_centroid = jnp.mean(base_points, axis=0)
+        base_points = base_points - jnp.array([width / 2, width / 2, 0]) + base_centroid
         cube_vertices = jnp.arange(8)
         cube_edges = jnp.array(
             [
@@ -249,23 +236,5 @@ class CubicArmBuilder:
                     cube_vertices + index_offset,
                     cube_edges + index_offset,
                     cube_faces + index_offset,
-                    # masses=jnp.ones_like(cube_vertices) / len(cube_vertices),
-                    # vertex_damping=jnp.ones_like(cube_vertices),
                 )
             )
-
-        self.velocities = jnp.zeros_like(self.positions)
-        self.positions = self.positions * width - default_centroid + base_centroid
-
-    def add_constraint(self, constraint):
-        self.constraints.append(constraint)
-
-    def add_sensor(self, sensor):
-        self.sensors.append(sensor)
-
-    def construct_arm(self):
-        return Arm3D(
-            self.cells,
-            self.constraints,
-            self.sensors,
-        )

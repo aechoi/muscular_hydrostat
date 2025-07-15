@@ -7,17 +7,18 @@ from pydrostat.model.structure import Arm3D
 class PlanarFacesRagged(IConstraint):
     """Does not assume each face has the same number of vertices"""
 
-    def initialize_constraint(self, structure: Arm3D):
+    def initialize_constraint(self, structure: Arm3D, initial_state):
         pass
 
-    def calculate_constraints(self, structure: Arm3D):
+    def calculate_constraints(self, structure: Arm3D, state):
+        pos, vel = structure.state2posvel(state)
         constraints = []
         jacobians = []
         djac_dts = []
         for face in structure.faces:
 
-            points = structure.positions[face]  # VxD
-            dpointsdt = structure.velocities[face]  # VxD
+            points = pos[face]  # VxD
+            dpointsdt = vel[face]  # VxD
             F, D = points.shape
 
             centroid = np.average(points, axis=0)
@@ -38,14 +39,14 @@ class PlanarFacesRagged(IConstraint):
             dPdP = np.zeros((F, F, D, D))
             dPdP[np.arange(F), np.arange(F), :, :] = np.eye(D)
             dcentereddP = dPdP - np.eye(D)[None, None, :, :] / F  # FxFxDxD
-            jacobian = np.zeros((F,) + structure.positions.shape)
+            jacobian = np.zeros((F,) + pos.shape)
             jacobian[:, face, :] = dcentereddP @ normal + (  # FxFxDxD @ D = FxFxD
                 centered_points @ dndp
             ).swapaxes(
                 0, 1
             )  # (FxD @ FxDxD)swap = FxFxD
 
-            djacdt = np.zeros((F,) + structure.positions.shape)
+            djacdt = np.zeros((F,) + pos.shape)
             djacdt[:, face, :] = (
                 dcentereddP @ dndt
                 + (centered_velocities @ dndp).swapaxes(0, 1)
@@ -139,7 +140,7 @@ class PlanarFacesRagged(IConstraint):
 class PlanarFacesCommon(IConstraint):
     """Assume that each face has the same number of vertices for vectorization"""
 
-    def initialize_constraint(self, structure):
+    def initialize_constraint(self, structure: Arm3D, initial_state):
         num_vertices = len(structure.faces[0])
         for face in structure.faces:
             if len(face) != num_vertices:
@@ -148,7 +149,8 @@ class PlanarFacesCommon(IConstraint):
                 )
         self.face_indices = np.array(structure.faces)
 
-    def calculate_constraints(self, structure: Arm3D):
+    def calculate_constraints(self, structure: Arm3D, state):
+        pos, vel = structure.state2posvel(state)
         N, D = structure.positions.shape
         F, V = self.face_indices.shape
 
@@ -156,8 +158,8 @@ class PlanarFacesCommon(IConstraint):
         jacobians = np.zeros((F, V, N, D))
         djac_dts = np.zeros((F, V, N, D))
 
-        points = structure.positions[self.face_indices]  # FxVxD
-        dpoints_dt = structure.velocities[self.face_indices]  # FxVxD
+        points = pos[self.face_indices]  # FxVxD
+        dpoints_dt = vel[self.face_indices]  # FxVxD
 
         centroids = np.average(points, axis=1)  # FxD
         dcentroid_dts = np.average(dpoints_dt, axis=1)  # FxD

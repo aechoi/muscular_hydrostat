@@ -11,10 +11,10 @@ class ConstantVolume(IConstraint):
     def __init__(self):
         self.initial_volumes = None
 
-    def initialize_constraint(self, structure: Arm3D):
+    def initialize_constraint(self, structure: Arm3D, initial_state):
         self.initial_volumes = []
         for cell in structure.cells:
-            apex_position = structure.positions[cell.vertices[0]]
+            apex_position = initial_state[cell.vertices[0]]
 
             relative_positions = (
                 structure.positions[cell.triangles] - apex_position
@@ -25,7 +25,7 @@ class ConstantVolume(IConstraint):
 
         self.initial_volumes = np.array(self.initial_volumes)
 
-    def calculate_constraints(self, structure: Arm3D):
+    def calculate_constraints(self, structure: Arm3D, state):
         if self.initial_volumes is None:
             raise ValueError(
                 "Initial volumes have not been calculated. Call initialize_constraint()"
@@ -88,24 +88,24 @@ class ConstantVolumeCommon(IConstraint):
     def __init__(self):
         self.initial_volumes = None
 
-    def initialize_constraint(self, structure: Arm3D):
+    def initialize_constraint(self, structure: Arm3D, initial_state):
+        initial_pos, initial_vel = structure.state2posvel(initial_state)
         self.vertices = np.array([cell.vertices for cell in structure.cells])  # CxV
         self.triangles = np.array([cell.triangles for cell in structure.cells])  # CxTxS
 
-        apex_positions = structure.positions[self.vertices[:, 0]]  # CxD
+        apex_positions = initial_pos[self.vertices[:, 0]]  # CxD
         relative_positions = (
-            structure.positions[self.triangles] - apex_positions[:, None, None, :]
+            initial_pos[self.triangles] - apex_positions[:, None, None, :]
         )  # CxTx3xD - CxD
         tet_volumes = np.linalg.det(relative_positions)  # CxT
         self.initial_volumes = np.sum(tet_volumes, axis=1)  # C
 
-    def calculate_constraints(self, structure: Arm3D):
+    def calculate_constraints(self, structure: Arm3D, state):
         if self.initial_volumes is None:
             raise ValueError(
                 "Initial volumes have not been calculated. Call initialize_constraint()"
             )
-        pos = structure.positions
-        vel = structure.velocities
+        pos, vel = structure.state2posvel(state)
 
         constraints = np.zeros(len(structure.cells))
         jacobians = np.zeros((len(structure.cells),) + pos.shape)

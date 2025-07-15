@@ -30,7 +30,10 @@ class Actor:
             initial_state if initial_state is not None else jnp.zeros(model.num_states)
         )
         self.control = jnp.zeros(model.num_controls)
-        self.current_obstacles = []
+
+        self.current_obstacles = (
+            []
+        )  # When placed in an environment, these are added/removed
 
     def set_environment(self, environment):
         for obstacle in self.current_obstacles:

@@ -11,7 +11,7 @@ Typical usage example:
 
 from abc import ABC, abstractmethod
 
-import numpy as np
+import jax.numpy as jnp
 
 from pydrostat.model.constrained_dynamics import ConstrainedDynamics
 
@@ -26,7 +26,9 @@ class IConstraint(ABC):
     between the calculation of others.
     """
 
-    def initialize_constraint(structure: ConstrainedDynamics) -> None:
+    def initialize_constraint(
+        structure: ConstrainedDynamics, initial_state: jnp.ndarray
+    ) -> None:
         """Initialize the constraint by calculating whatever data is needed
 
         Certain constraints, such as constant volume, require a calculation to be done
@@ -41,8 +43,8 @@ class IConstraint(ABC):
 
     @abstractmethod
     def calculate_constraints(
-        structure: ConstrainedDynamics,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        structure: ConstrainedDynamics, state: jnp.ndarray
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Returns the constraint vector, the Jacobian, and the time derivative of the
         Jacobian.
 

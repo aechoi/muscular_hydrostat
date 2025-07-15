@@ -41,7 +41,7 @@ class ConstrainedDynamics(DynamicModel):
 
     def __init__(
         self,
-        num_particles: int,
+        initial_pos: jnp.ndarray,
         num_controls: int,
         masses: jnp.ndarray,
         constraints: list[IConstraint] = None,
@@ -57,6 +57,7 @@ class ConstrainedDynamics(DynamicModel):
                 typically will not include environmental constraints like obstacles)
             constraint_damping_rate: the rate of damping for the constraints
             constraint_spring_rate: the rate of spring force for the constraints"""
+        num_particles = len(masses)
         num_states = num_particles * 6
         super().__init__(num_states, num_controls)
 
@@ -66,13 +67,13 @@ class ConstrainedDynamics(DynamicModel):
         if self.constraints is None:
             self.constraints = []
 
-        self.external_forces = jnp.zeros(num_particles, 3)
+        self.external_forces = jnp.zeros((num_particles, 3))
 
         self.constraint_damping_rate = constraint_damping_rate
         self.constraint_spring_rate = constraint_spring_rate
 
         for constraint in self.constraints:
-            constraint.initialize_constraint(self)
+            constraint.initialize_constraint(self, initial_pos)
 
     def continuous_dynamics(self, state, control, t):
         """Returns the current state derivative"""
@@ -196,7 +197,9 @@ class ConstrainedDynamics(DynamicModel):
         jacobians = []
         djacobian_dts = []
         for constraint in self.constraints:
-            constraint, jacobian, djacobian_dt = constraint.calculate_constraints(state)
+            constraint, jacobian, djacobian_dt = constraint.calculate_constraints(
+                self, state
+            )
 
             # sometimes a constraint doesn't apply and returns no constraints
             if len(constraint) == 0:

@@ -10,11 +10,12 @@ class ClipLength(IConstraint):
         self.max_length = max_length
         self.limits = np.array([self.min_length, self.max_length])
 
-    def initialize_constraint(self, structure: Arm3D):
+    def initialize_constraint(self, structure: Arm3D, initial_state: np.ndarray):
         pass
 
-    def calculate_constraints(self, structure: Arm3D):
-        edge_points = structure.positions[structure.edges]  # shape ex2xd
+    def calculate_constraints(self, structure: Arm3D, initial_state: np.ndarray):
+        pos, vel = structure.state2posvel(initial_state)
+        edge_points = pos[structure.edges]  # shape ex2xd
         edge_lengths = np.linalg.norm(edge_points[:, 0] - edge_points[:, 1], axis=1)
         edge_mask = np.logical_or(
             edge_lengths > self.max_length, edge_lengths < self.min_length
@@ -27,8 +28,8 @@ class ClipLength(IConstraint):
         length_diffs = edge_lengths[edge_mask][:, None] - self.limits[None, :]
         min_or_max = np.argmin(np.abs(length_diffs), axis=1)
         constraints = length_diffs[np.arange(num_constrained), min_or_max]
-        jacobians = np.zeros((num_constrained,) + structure.positions.shape)
-        djac_dts = np.zeros((num_constrained,) + structure.positions.shape)
+        jacobians = np.zeros((num_constrained,) + pos.shape)
+        djac_dts = np.zeros((num_constrained,) + pos.shape)
 
         constrained_points = edge_points[edge_mask]  # Shape sx2xd where s is num_long
 
@@ -47,7 +48,7 @@ class ClipLength(IConstraint):
             -unit_relative_edge
         )
 
-        constrained_velocities = structure.velocities[structure.edges[edge_mask]]
+        constrained_velocities = vel[structure.edges[edge_mask]]
         vel_dif = (
             constrained_velocities[:, 0] - constrained_velocities[:, 1]
         )  # shape sxd
