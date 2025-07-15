@@ -32,20 +32,33 @@ class ConstrainedDynamics(DynamicModel):
     number of vertices.
 
     Properties:
-        state: an 6n length array of vertex positions and velocities
         inv_masses: a length n array of the reciprocals of vertex masses
+        constraints: a list of constraints to apply to the system
+        external_forces: a length nxd array of external forces acting on the vertices
+        constraint_damping_rate: the rate of damping for the constraints
+        constraint_spring_rate: the rate of spring force for the constraints
     """
 
     def __init__(
         self,
         num_particles: int,
+        num_controls: int,
         masses: jnp.ndarray,
         constraints: list[IConstraint] = None,
         constraint_damping_rate=50,
         constraint_spring_rate=50,
     ):
-        """Generate the state vector and initialize the constraints"""
-        super().__init__()
+        """Generate the state vector and initialize the constraints
+
+        Args:
+            num_particles: the number of particles in the system
+            masses: a length n array of the masses of each vertex
+            constraints: a list of intrinsic constraints to apply to the system (ie
+                typically will not include environmental constraints like obstacles)
+            constraint_damping_rate: the rate of damping for the constraints
+            constraint_spring_rate: the rate of spring force for the constraints"""
+        num_states = num_particles * 6
+        super().__init__(num_states, num_controls)
 
         self.inv_masses = 1 / masses
 
@@ -81,6 +94,11 @@ class ConstrainedDynamics(DynamicModel):
         """Add a constraint"""
         constraint.initialize_constraint(self)
         self.constraints.append(constraint)
+
+    def remove_constraint(self, constraint: IConstraint):
+        """Remove a constraint"""
+        if constraint in self.constraints:
+            self.constraints.remove(constraint)
 
     def apply_external_forces(self, vertices: jnp.ndarray, forces: jnp.ndarray):
         """Set the force acting on a particular vertex

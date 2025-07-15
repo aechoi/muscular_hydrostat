@@ -14,7 +14,7 @@ Typical use case:
 
 from dataclasses import dataclass
 
-
+import OpenGL.GL as gl
 import jax.numpy as jnp
 from .constrained_dynamics import ConstrainedDynamics
 
@@ -61,7 +61,14 @@ class Cell3D:
 
 class Arm3D(ConstrainedDynamics):
     """A concrete instance of ConstrainedDynamics that models a 3D muscular hydrostat
-    with cells of constant volume."""
+    with cells of constant volume.
+
+    Properties:
+        cells: a list of Cell3D objects that make up the arm
+        edges: a list of edges, each edge is a tuple of vertex indices
+        faces: a list of faces, each face is a tuple of vertex indices
+        vertex_damping: a length n array of vertex damping rates
+        edge_damping: a length m array of edge damping rates"""
 
     def __init__(
         self,
@@ -70,15 +77,15 @@ class Arm3D(ConstrainedDynamics):
     ):
         # collect edges and faces from cells
         self.cells = cells
-        self.vertices = []
+        vertices = []
         self.edges = []
         self.faces = []
         self.edge_damping = []
 
         for cell in self.cells:
             for vertex in cell.vertices:
-                if vertex not in self.vertices:
-                    self.vertices.append(vertex)
+                if vertex not in vertices:
+                    vertices.append(vertex)
 
             for e, edge in enumerate(cell.edges):
                 edge = sorted(edge)
@@ -91,17 +98,17 @@ class Arm3D(ConstrainedDynamics):
                 if face not in self.faces:
                     self.faces.append(face)
 
-        num_particles = len(self.vertices)
+        num_particles = len(vertices)
         self.edges = jnp.array(self.edges)
 
         masses = jnp.zeros(num_particles)
-        damping = jnp.zeros(num_particles)
+        self.vertex_damping = jnp.zeros(num_particles)
         for cell in self.cells:
             for v, vertex in enumerate(cell.vertices):
                 masses = masses.at[vertex].set(cell.masses[v])
-                damping = damping.at[vertex].set(cell.vertex_damping[v])
-
-        self.control_inputs = jnp.zeros(len(self.edges))
+                self.vertex_damping = self.vertex_damping.at[vertex].set(
+                    cell.vertex_damping[v]
+                )
 
         self.constraints = constraints if constraints is not None else []
 
@@ -126,7 +133,7 @@ class Arm3D(ConstrainedDynamics):
         passive_forces = []
         passive_edge_forces = self._calc_passive_edge_forces(pos, vel)
         passive_forces.append(passive_edge_forces)
-        passive_forces.append(self.edge_damping[:, None] * vel)
+        passive_forces.append(self.vertex_damping[:, None] * vel)
         return passive_forces
 
     def _calc_passive_edge_forces(self, pos, vel):
@@ -144,6 +151,33 @@ class Arm3D(ConstrainedDynamics):
             edge_forces = edge_forces.at[edge[1]].add(edge_damp_force)
 
         return edge_forces
+
+    def draw(self, state, control, idx):
+        color = jnp.array([0.0, 0.0, 0.0])
+        pos, _ = self.state2posvel(state)
+
+        # Draw edges
+        gl.glBegin(gl.GL_LINES)
+        for edge, input in zip(self.edges, control):
+            activation = input / (1 + input)
+            color = jnp.ones(3) * 1 - activation
+            color = color.at[idx].set(1)
+            gl.glColor3f(*color)
+            for vertex in edge:
+                gl.glVertex3f(*pos[vertex])
+        gl.glEnd()
+
+        # Draw vertices
+        gl.glPointSize(10.0)
+        gl.glBegin(gl.GL_POINTS)
+        scents = self.environment.sample_scent(pos)
+        max_scent = max(scents)
+        for vertex, scent in zip(pos, scents):
+            color = jnp.ones(3) * 1 - scent / max_scent
+            color = color.at[idx].set(1)
+            gl.glColor3f(*color)
+            gl.glVertex3f(*vertex)
+        gl.glEnd()
 
 
 class CubicArmBuilder:

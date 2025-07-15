@@ -8,14 +8,16 @@ import time
 
 import numpy as np
 
-from ..environment.environment import Environment
-from pydrostat.model.structure import Arm3D
+from pydrostat.actor import Actor
+from pydrostat.environment.environment import Environment
 
 
-class DisplayStructure:
-    def __init__(self, environment: Environment, structures: list[Arm3D], dt=0.02):
+class Scene:
+    def __init__(self, actors: list[Actor], environment: Environment, dt=0.02):
+        self.actors = actors
         self.environment = environment
-        self.structures = structures
+        for actor in self.actors:
+            actor.set_environment(environment)
         self.dt = dt
 
         pygame.display.init()
@@ -59,8 +61,8 @@ class DisplayStructure:
                         simulating = not simulating
 
                     if event.key == pygame.K_RIGHT:
-                        for structure in self.structures:
-                            structure.iterate(self.dt)
+                        for actor in self.actors:
+                            actor.step(self.frame_count * self.dt, self.dt)
 
                 if event.type == pygame.KEYUP:
                     if event.key == pygame.K_LCTRL:
@@ -103,11 +105,10 @@ class DisplayStructure:
 
             sim_start = time.perf_counter()
             if simulating:
-                for structure in self.structures:
-                    # print(np.max(np.abs(structure.positions), axis=0))
-                    structure.iterate(self.dt)
+                for actor in self.actors:
+                    actor.step(self.frame_conut * self.dt, self.dt)
             sim_end = time.perf_counter()
-            self.draw_structures()
+            self.draw_actors()
 
             self.draw_obstacles()
 
@@ -151,29 +152,33 @@ class DisplayStructure:
 
         gl.glEnd()
 
-    def draw_structures(self):
-        color = np.array([0, 0, 0], dtype=float)
-        for idx, structure in enumerate(self.structures):
-            gl.glBegin(gl.GL_LINES)
-            for edge, input in zip(structure.edges, structure.control_inputs):
-                activation = input / (1 + input)
-                color[:] = 1 - activation
-                color[idx] = 1
-                gl.glColor3f(*color)
-                for vertex in edge:
-                    gl.glVertex3f(*structure.positions[vertex])
-            gl.glEnd()
+    def draw_actors(self):
+        for idx, actor in enumerate(self.actors):
+            actor.draw(idx)
 
-            gl.glPointSize(10.0)
-            gl.glBegin(gl.GL_POINTS)
-            scents = self.environment.sample_scent(structure.positions)
-            max_scent = max(scents)
-            for vertex, scent in zip(structure.positions, scents):
-                color[:] = 1 - scent / max_scent
-                color[idx] = 1
-                gl.glColor3f(*color)
-                gl.glVertex3f(*vertex)
-            gl.glEnd()
+    # def draw_actors(self):
+    #     color = np.array([0, 0, 0], dtype=float)
+    #     for idx, actor in enumerate(self.actors):
+    #         gl.glBegin(gl.GL_LINES)
+    #         for edge, input in zip(actor.model.edges, structure.control_inputs):
+    #             activation = input / (1 + input)
+    #             color[:] = 1 - activation
+    #             color[idx] = 1
+    #             gl.glColor3f(*color)
+    #             for vertex in edge:
+    #                 gl.glVertex3f(*structure.positions[vertex])
+    #         gl.glEnd()
+
+    #         gl.glPointSize(10.0)
+    #         gl.glBegin(gl.GL_POINTS)
+    #         scents = self.environment.sample_scent(structure.positions)
+    #         max_scent = max(scents)
+    #         for vertex, scent in zip(structure.positions, scents):
+    #             color[:] = 1 - scent / max_scent
+    #             color[idx] = 1
+    #             gl.glColor3f(*color)
+    #             gl.glVertex3f(*vertex)
+    #         gl.glEnd()
 
     def draw_obstacles(self):
         gl.glBegin(gl.GL_LINES)

@@ -6,9 +6,17 @@ import jax.numpy as jnp
 
 class DynamicModel(ABC):
     """Dynamic model of a state space system
-    TODO add back in autograded linearization"""
+    TODO add back in autograded linearization
 
-    def __init__(self):
+    Properties:
+        dt_jac_state: a function that returns the jacobian of the discrete dynamics
+            with respect to the state
+        dt_jac_control: a function that returns the jacobian of the discrete dynamics
+            with respect to the control input"""
+
+    def __init__(self, num_states, num_controls):
+        self.num_states = num_states
+        self.num_controls = num_controls
         # self.dt_jac_state = jacobian(self.discrete_dynamics, 0)
         # self.dt_jac_control = jacobian(self.discrete_dynamics, 1)
         pass
@@ -64,3 +72,12 @@ class DynamicModel(ABC):
     #     return vmap(self._linearize, in_axes=[0, 0, 0, None])(
     #         states[:-1], controls, ts, dt
     #     )
+
+    def draw(self, state, control, idx=None):
+        """Draw the model with a particular state and control.
+
+        Args:
+            state: the current state of the model
+            control: the current control input to the model
+            idx: an optional index for coloring or identification"""
+        raise NotImplementedError("This method should be implemented by subclasses.")
