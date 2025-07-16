@@ -207,7 +207,10 @@ class ConstrainedDynamics(DynamicModel):
 
         pos, vel = self.state2posvel(state)
         constraints, jacobian, djacobian_dt = self._calculate_constraints(state)
-        front_matrix = jacobian @ (self.inv_masses[None, :] * jacobian).T
+        front_matrix = jacobian @ (self.inv_masses[:, None] * jacobian.T)
+        front_matrix = (
+            front_matrix + jnp.eye(front_matrix.shape[0]) * 1e-6
+        )  # Regularization
         dependent_array = -(
             djacobian_dt @ vel.ravel()
             + jacobian @ (self.inv_masses * explicit_forces.ravel())

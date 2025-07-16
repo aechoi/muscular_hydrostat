@@ -44,7 +44,9 @@ class HandTunedGradient(IPolicy):
             if forward_backward_gradient > 0:
                 actuator_index = np.array(
                     [
-                        np.where(np.all(structure.edges == sorted(edge), axis=1))[0]
+                        np.where(
+                            np.all(np.array(structure.edges) == sorted(edge), axis=1)
+                        )[0]
                         for edge in cell.edges[-4:]
                     ]
                 ).flatten()
@@ -52,7 +54,9 @@ class HandTunedGradient(IPolicy):
             else:
                 actuator_index = np.array(
                     [
-                        np.where(np.all(structure.edges == sorted(edge), axis=1))[0]
+                        np.where(
+                            np.all(np.array(structure.edges) == sorted(edge), axis=1)
+                        )[0]
                         for edge in cell.edges[4:-8]
                     ]
                 ).flatten()
@@ -65,7 +69,9 @@ class HandTunedGradient(IPolicy):
             activations = rel_vertices @ desired_motion
             actuator_index = np.array(
                 [
-                    np.where(np.all(structure.edges == sorted(edge), axis=1))[0]
+                    np.where(np.all(np.array(structure.edges) == sorted(edge), axis=1))[
+                        0
+                    ]
                     for edge in cell.edges[4:-8]
                 ]
             ).flatten()
@@ -73,7 +79,9 @@ class HandTunedGradient(IPolicy):
 
             actuator_index = np.array(
                 [
-                    np.where(np.all(structure.edges == sorted(edge), axis=1))[0]
+                    np.where(np.all(np.array(structure.edges) == sorted(edge), axis=1))[
+                        0
+                    ]
                     for edge in cell.edges[8:-4]
                 ]
             ).flatten()

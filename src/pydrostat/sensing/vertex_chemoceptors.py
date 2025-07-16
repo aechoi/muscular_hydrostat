@@ -7,8 +7,9 @@ class VertexChemoceptors(ISensor):
     def __init__(self):
         self._sensor_type = "VertexChemoceptors"
 
-    def sense(self, structure: Arm3D, environment: Environment):
-        return environment.sample_scent(structure.positions)
+    def sense(self, structure: Arm3D, state, environment: Environment):
+        pos, _ = structure.state2posvel(state)
+        return environment.sample_scent(pos)
 
     @property
     def sensor_type(self):

@@ -14,12 +14,13 @@ class ISensor(ABC):
         pass
 
     @abstractmethod
-    def sense(structure: Arm3D, environment: Environment):
+    def sense(structure: Arm3D, state, environment: Environment):
         """Sense something about the environment using the position of sesnors on the
         structure.
 
         Args:
             structure: the structure on which the sensors are housed
+            state: the current state of the structure
             environment: the environment that the structure is in
 
         Returns:

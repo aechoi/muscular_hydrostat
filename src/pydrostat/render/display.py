@@ -156,30 +156,6 @@ class Scene:
         for idx, actor in enumerate(self.actors):
             actor.draw(idx)
 
-    # def draw_actors(self):
-    #     color = np.array([0, 0, 0], dtype=float)
-    #     for idx, actor in enumerate(self.actors):
-    #         gl.glBegin(gl.GL_LINES)
-    #         for edge, input in zip(actor.model.edges, structure.control_inputs):
-    #             activation = input / (1 + input)
-    #             color[:] = 1 - activation
-    #             color[idx] = 1
-    #             gl.glColor3f(*color)
-    #             for vertex in edge:
-    #                 gl.glVertex3f(*structure.positions[vertex])
-    #         gl.glEnd()
-
-    #         gl.glPointSize(10.0)
-    #         gl.glBegin(gl.GL_POINTS)
-    #         scents = self.environment.sample_scent(structure.positions)
-    #         max_scent = max(scents)
-    #         for vertex, scent in zip(structure.positions, scents):
-    #             color[:] = 1 - scent / max_scent
-    #             color[idx] = 1
-    #             gl.glColor3f(*color)
-    #             gl.glVertex3f(*vertex)
-    #         gl.glEnd()
-
     def draw_obstacles(self):
         gl.glBegin(gl.GL_LINES)
         gl.glColor3f(1, 0, 1)

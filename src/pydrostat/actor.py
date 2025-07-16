@@ -36,6 +36,7 @@ class Actor:
             []
         )  # When placed in an environment, these are added/removed
         self.observations = {}
+        self.environment = None
 
     def reset_state(self):
         """Reset the actor's state to the initial state."""
@@ -43,17 +44,19 @@ class Actor:
         self.control = jnp.zeros(self.model.num_controls)
 
     def set_environment(self, environment):
+        self.environment = environment
         self.current_obstacles = self.model.set_environment(
             environment, self.state, self.current_obstacles
         )
 
-    def sense(self, environment) -> dict[str, jnp.ndarray]:
+    def sense(self) -> dict[str, jnp.ndarray]:
         """Take sensor measurements for all sensors and return a dictionary of data.
 
         Returns:
             A dictionary of sensor data where each key is the sensor type."""
         for sensor in self.sensors:
-            self.observations.update(sensor.sense(self.state, environment))
+            sensor_output = sensor.sense(self.model, self.state, self.environment)
+            self.observations.update({sensor.sensor_type: sensor_output})
         return self.observations
 
     def estimate_state(self) -> jnp.ndarray:
@@ -79,6 +82,7 @@ class Actor:
 
         Returns:
             The next state of the model after applying the control policy."""
+        self.sense()
         self.control = self.calculate_control(t)
         next_state = self.model.discrete_dynamics(self.state, self.control, t, dt)
         self.state = next_state
