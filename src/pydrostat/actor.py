@@ -13,6 +13,8 @@ import jax.numpy as jnp
 from pydrostat.model.dynamics import DynamicModel
 from pydrostat.control.policy_interface import IPolicy
 
+from time import time
+
 
 class Actor:
     def __init__(
@@ -82,9 +84,16 @@ class Actor:
 
         Returns:
             The next state of the model after applying the control policy."""
+        last_time = time()
         self.sense()
+        print("Sensing", time() - last_time)
+        last_time = time()
         self.control = self.calculate_control(t)
+        print("Control", time() - last_time)
+        last_time = time()
         next_state = self.model.discrete_dynamics(self.state, self.control, t, dt)
+        print("Simulation", time() - last_time)
+        last_time = time()
         self.state = next_state
 
     def draw(self, idx):

@@ -21,6 +21,8 @@ from pydrostat.model.dynamics import DynamicModel
 if TYPE_CHECKING:
     from ..constraint.constraint_interface import IConstraint
 
+from time import time
+
 
 class ConstrainedDynamics(DynamicModel):
     """An abstract class for constrained particle dynamics.
@@ -89,11 +91,18 @@ class ConstrainedDynamics(DynamicModel):
 
     def continuous_dynamics(self, state, control, t):
         """Returns the current state derivative"""
+        last_time = time()
         actuation_forces = self._calc_actuation_forces(state, control)
+        print("Actuation forces", time() - last_time)
+        last_time = time()
         explicit_forces = self._calc_explicit_forces(
             state, actuation_forces
         )  # Anything that's not a constraint force, ie spring rates, viscous damping
+        print("Explicit forces", time() - last_time)
+        last_time = time()
         reaction_forces = self._calc_reaction_forces(state, explicit_forces)
+        print("Reaction forces", time() - last_time)
+        last_time = time()
         pos, vel = self.state2posvel(state)
         dstate = jnp.hstack(
             (

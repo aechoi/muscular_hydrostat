@@ -5,8 +5,11 @@ and edge damping."""
 from dataclasses import dataclass
 
 import OpenGL.GL as gl
+import jax
 import jax.numpy as jnp
 from .constrained_dynamics import ConstrainedDynamics
+
+from time import time
 
 
 @dataclass
@@ -89,6 +92,7 @@ class Arm3D(ConstrainedDynamics):
 
         num_particles = len(vertices)
         self.edges = jnp.array(self.edges)
+        self.edge_damping = jnp.array(self.edge_damping)
         num_controls = len(self.edges)
 
         masses = jnp.zeros(num_particles)
@@ -111,11 +115,21 @@ class Arm3D(ConstrainedDynamics):
     def _calc_actuation_forces(self, state, control_input):
         pos, vel = self.state2posvel(state)
         edge_forces = jnp.zeros_like(pos)
-        for edge, muscle_force in zip(self.edges, control_input):
-            edge_vector = pos[edge[1]] - pos[edge[0]]
+
+        def actuation_force_fn(edge, muscle_force):
+            i, j = edge
+            edge_vector = pos[j] - pos[i]
             edge_vector = edge_vector / jnp.linalg.norm(edge_vector)
-            edge_forces = edge_forces.at[edge[1]].add(-edge_vector * muscle_force)
-            edge_forces = edge_forces.at[edge[0]].add(edge_vector * muscle_force)
+            edge_force = edge_vector * muscle_force
+            return (i, edge_force), (j, -edge_force)
+
+        (idx_i, force_i), (idx_j, force_j) = jax.vmap(
+            actuation_force_fn, in_axes=[0, 0]
+        )(self.edges, control_input)
+
+        edge_forces = jnp.zeros_like(pos)
+        edge_forces = edge_forces.at[idx_i].add(force_i)
+        edge_forces = edge_forces.at[idx_j].add(force_j)
         return edge_forces
 
     def _calc_passive_forces(self, state):
@@ -127,19 +141,27 @@ class Arm3D(ConstrainedDynamics):
         return passive_forces
 
     def _calc_passive_edge_forces(self, pos, vel):
-        """Calculate the damping forces along edges."""
-        edge_forces = jnp.zeros_like(pos)
-        for edge, damping_rate in zip(self.edges, self.edge_damping):
-            edge_vector = pos[edge[1]] - pos[edge[0]]
-            edge_unit_vector = edge_vector / jnp.linalg.norm(edge_vector)
-            relative_velocity = vel[edge[1]] - vel[edge[0]]
-            edge_velocity = (
-                jnp.dot(edge_unit_vector, relative_velocity) * edge_unit_vector
-            )  # extension positive, contraction negative
-            edge_damp_force = damping_rate * edge_velocity
-            edge_forces = edge_forces.at[edge[0]].add(-edge_damp_force)
-            edge_forces = edge_forces.at[edge[1]].add(edge_damp_force)
+        """Calculate the damping forces along edges using vmap."""
 
+        def edge_force_fn(edge, damping_rate):
+            i, j = edge
+            edge_vector = pos[j] - pos[i]
+            edge_unit_vector = edge_vector / jnp.linalg.norm(edge_vector)
+            relative_velocity = vel[j] - vel[i]
+            edge_velocity = (edge_unit_vector @ relative_velocity) * edge_unit_vector
+            edge_damp_force = damping_rate * edge_velocity
+            # Returns force contributions for both vertices
+            return (i, -edge_damp_force), (j, edge_damp_force)
+
+        # Vectorize over all edges
+        (idx_i, force_i), (idx_j, force_j) = jax.vmap(edge_force_fn, in_axes=[0, 0])(
+            self.edges, self.edge_damping
+        )
+
+        # Accumulate forces at each vertex
+        edge_forces = jnp.zeros_like(pos)
+        edge_forces = edge_forces.at[idx_i].add(force_i)
+        edge_forces = edge_forces.at[idx_j].add(force_j)
         return edge_forces
 
     def draw(self, state, control, sensor_data, idx):
