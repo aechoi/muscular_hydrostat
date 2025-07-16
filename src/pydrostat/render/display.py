@@ -106,7 +106,7 @@ class Scene:
             sim_start = time.perf_counter()
             if simulating:
                 for actor in self.actors:
-                    actor.step(self.frame_conut * self.dt, self.dt)
+                    actor.step(self.frame_count * self.dt, self.dt)
             sim_end = time.perf_counter()
             self.draw_actors()
 

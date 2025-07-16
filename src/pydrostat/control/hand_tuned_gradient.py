@@ -10,13 +10,13 @@ from pydrostat.model.structure import Arm3D
 class HandTunedGradient(IPolicy):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def __call__(self, structure: Arm3D, t: float) -> np.ndarray:
-        sensor_data = structure.sense()
+    def __call__(self, structure: Arm3D, states, observations, t: float) -> np.ndarray:
         control_inputs = np.zeros(len(structure.edges), dtype=float)
-        if "VertexChemoceptors" not in sensor_data:
+        if "VertexChemoceptors" not in observations:
             return control_inputs
 
-        sensor_data = sensor_data["VertexChemoceptors"]
+        sensor_data = observations["VertexChemoceptors"]
+        pos, vel = structure.state2posvel(states)
 
         forward_backward_gradient = 0
         strength_scales = np.logspace(-1, 2, len(structure.cells), base=4.5)
@@ -24,7 +24,7 @@ class HandTunedGradient(IPolicy):
         for idx, cell in enumerate(structure.cells[::-1]):
             strength_scale = strength_scales[idx]
 
-            points = structure.positions[cell.vertices]
+            points = pos[cell.vertices]
             scents = sensor_data[cell.vertices]
 
             gradient = (
@@ -34,8 +34,8 @@ class HandTunedGradient(IPolicy):
 
             top_face = cell.faces[-1]
             normal = np.cross(
-                np.diff(structure.positions[top_face[0:2]], axis=0),
-                np.diff(structure.positions[top_face[1:3]], axis=0),
+                np.diff(pos[top_face[0:2]], axis=0),
+                np.diff(pos[top_face[1:3]], axis=0),
             ).flatten()
             normal = normal / np.linalg.norm(normal)
 
@@ -60,8 +60,8 @@ class HandTunedGradient(IPolicy):
 
             desired_motion = gradient - normal
             # desired_motion = desired_motion / np.linalg.norm(desired_motion)
-            top_centroid = np.average(structure.positions[top_face], axis=0)
-            rel_vertices = structure.positions[top_face] - top_centroid
+            top_centroid = np.average(pos[top_face], axis=0)
+            rel_vertices = pos[top_face] - top_centroid
             activations = rel_vertices @ desired_motion
             actuator_index = np.array(
                 [
@@ -83,16 +83,17 @@ class HandTunedGradient(IPolicy):
         return control_inputs
 
 
-class HandTunedGradient2(IController):
+class HandTunedGradient2(IPolicy):
     """A class for calculating edge actuations based on the estimated gradient of scent"""
 
-    def policy(self, structure: Arm3D):
-        sensor_data = structure.sense()
+    def policy(self, structure: Arm3D, states, observations, t):
         control_inputs = np.zeros(len(structure.edges), dtype=float)
-        if "VertexChemoceptors" not in sensor_data:
+        if "VertexChemoceptors" not in observations:
             return control_inputs
 
-        sensor_data = sensor_data["VertexChemoceptors"]
+        sensor_data = observations["VertexChemoceptors"]
+
+        pos, vel = structure.state2posvel(states)
 
         forward_backward_gradient = 0
         strength_scales = np.logspace(-1, 2, len(structure.cells), base=4.5) * 1
@@ -100,7 +101,7 @@ class HandTunedGradient2(IController):
         for idx, cell in enumerate(structure.cells[::-1]):
             strength_scale = strength_scales[idx]
 
-            points = structure.positions[cell.vertices]
+            points = pos[cell.vertices]
             scents = sensor_data[cell.vertices]
 
             gradient = (
@@ -110,8 +111,8 @@ class HandTunedGradient2(IController):
 
             top_face = cell.faces[-1]
             normal = np.cross(
-                np.diff(structure.positions[top_face[0:2]], axis=0),
-                np.diff(structure.positions[top_face[1:3]], axis=0),
+                np.diff(pos[top_face[0:2]], axis=0),
+                np.diff(pos[top_face[1:3]], axis=0),
             ).flatten()
             normal = normal / np.linalg.norm(normal)
 
@@ -136,8 +137,8 @@ class HandTunedGradient2(IController):
 
             desired_motion = gradient - normal
             # desired_motion = desired_motion / np.linalg.norm(desired_motion)
-            top_centroid = np.average(structure.positions[top_face], axis=0)
-            rel_vertices = structure.positions[top_face] - top_centroid
+            top_centroid = np.average(pos[top_face], axis=0)
+            rel_vertices = pos[top_face] - top_centroid
             activations = rel_vertices @ desired_motion
             actuator_index = np.array(
                 [

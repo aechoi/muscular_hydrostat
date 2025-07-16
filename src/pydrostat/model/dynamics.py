@@ -26,7 +26,11 @@ class DynamicModel(ABC):
         raise NotImplementedError
 
     def discrete_dynamics(self, state, control, t, dt):
-        return self.integrator_rk(state, control, t, dt, self.continuous_dynamics)
+        return self.integrator_euler(state, control, t, dt)
+
+    def integrator_euler(self, state, control, t, dt):
+        """Integrate the continuous dynamics using Euler's method."""
+        return state + dt * self.continuous_dynamics(state, control, t)
 
     def integrator_rk(self, state, control, t, dt):
         k1 = self.continuous_dynamics(state, control, t)
@@ -80,4 +84,10 @@ class DynamicModel(ABC):
             state: the current state of the model
             control: the current control input to the model
             idx: an optional index for coloring or identification"""
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    @abstractmethod
+    def set_environment(self, environment):
+        """Whne an actor is placed in an environment, it may need to initialize certain
+        things, such as constraints."""
         raise NotImplementedError("This method should be implemented by subclasses.")

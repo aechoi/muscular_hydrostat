@@ -151,7 +151,7 @@ class PlanarFacesCommon(IConstraint):
 
     def calculate_constraints(self, structure: Arm3D, state):
         pos, vel = structure.state2posvel(state)
-        N, D = structure.positions.shape
+        N, D = pos.shape
         F, V = self.face_indices.shape
 
         constraints = np.zeros((F, V))

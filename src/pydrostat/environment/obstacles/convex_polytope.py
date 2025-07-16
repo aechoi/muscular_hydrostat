@@ -21,7 +21,7 @@ class ConvexPolytope(IObstacle):
         self.facets = np.array(facets)
         self.normal_matrix, self.facet_centroids = self._calculate_facet_data()
 
-    def initialize_constraint(self, structure: Arm3D):
+    def initialize_constraint(self, structure: Arm3D, initial_state: np.ndarray):
         pass
 
     def _calculate_facet_data(self):
@@ -61,17 +61,18 @@ class ConvexPolytope(IObstacle):
         )  # NxF
         return distances
 
-    def calculate_constraints(self, structure: Arm3D):
-        distances = self._calc_distance_to_faces(structure.positions)  # shape NxF
+    def calculate_constraints(self, structure: Arm3D, state):
+        pos, vel = structure.state2posvel(state)
+        distances = self._calc_distance_to_faces(pos)  # shape NxF
         intersecting_idxs = np.all(distances <= 0, axis=1)
-        intersecting_points = structure.positions[intersecting_idxs]  # shape IxD
+        intersecting_points = pos[intersecting_idxs]  # shape IxD
         if len(intersecting_points) == 0:
             return [], [], []
 
         intersected_faces = np.argmax(distances[intersecting_idxs], axis=1)  # shape I
         constraints = distances[intersecting_idxs, intersected_faces]
         num_constraints = len(constraints)
-        jacobians = np.zeros((num_constraints,) + structure.positions.shape)
+        jacobians = np.zeros((num_constraints,) + pos.shape)
         djacobian_dts = np.zeros_like(jacobians)
 
         intersected_normals = self.normal_matrix[intersected_faces]  # IxD

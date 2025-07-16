@@ -26,32 +26,35 @@ class Actor:
         self.model = model
         self.policy = policy
         self.sensors = sensors if sensors is not None else []
-        self.state = (
+        self.initial_state = (
             initial_state if initial_state is not None else jnp.zeros(model.num_states)
         )
+        self.state = self.initial_state + 0
         self.control = jnp.zeros(model.num_controls)
 
         self.current_obstacles = (
             []
         )  # When placed in an environment, these are added/removed
+        self.observations = {}
+
+    def reset_state(self):
+        """Reset the actor's state to the initial state."""
+        self.state = self.initial_state + 0
+        self.control = jnp.zeros(self.model.num_controls)
 
     def set_environment(self, environment):
-        for obstacle in self.current_obstacles:
-            self.model.remove_constraint(obstacle)
-
-        self.current_obstacles = environment.obstacles
-        for obstacle in self.current_obstacles:
-            self.model.add_constraint(obstacle)
+        self.current_obstacles = self.model.set_environment(
+            environment, self.state, self.current_obstacles
+        )
 
     def sense(self, environment) -> dict[str, jnp.ndarray]:
         """Take sensor measurements for all sensors and return a dictionary of data.
 
         Returns:
             A dictionary of sensor data where each key is the sensor type."""
-        sensor_data = {}
         for sensor in self.sensors:
-            sensor_data.update(sensor.sense(self.state, environment))
-        return sensor_data
+            self.observations.update(sensor.sense(self.state, environment))
+        return self.observations
 
     def estimate_state(self) -> jnp.ndarray:
         """Estimate the current state of the model."""
@@ -65,7 +68,7 @@ class Actor:
 
         Returns:
             The control input as a jnp.ndarray."""
-        return self.policy(self.estimate_state(), t)
+        return self.policy(self.model, self.estimate_state(), self.observations, t)
 
     def step(self, t: float, dt: float) -> None:
         """Perform a single step of the actor's operation. Update the state and control.
@@ -82,4 +85,4 @@ class Actor:
 
     def draw(self, idx):
         """Draw the actor's model."""
-        self.model.draw(self.state, self.control, idx)
+        self.model.draw(self.state, self.control, self.observations, idx)

@@ -41,7 +41,6 @@ class ConstrainedDynamics(DynamicModel):
 
     def __init__(
         self,
-        initial_pos: jnp.ndarray,
         num_controls: int,
         masses: jnp.ndarray,
         constraints: list[IConstraint] = None,
@@ -61,7 +60,7 @@ class ConstrainedDynamics(DynamicModel):
         num_states = num_particles * 6
         super().__init__(num_states, num_controls)
 
-        self.inv_masses = 1 / masses
+        self.inv_masses = jnp.repeat(1 / masses, 3)
 
         self.constraints = constraints
         if self.constraints is None:
@@ -72,8 +71,21 @@ class ConstrainedDynamics(DynamicModel):
         self.constraint_damping_rate = constraint_damping_rate
         self.constraint_spring_rate = constraint_spring_rate
 
+    def set_environment(self, environment, state, current_obstacles):
+        """TODO: The problem is that now the constraints may not be initialized, but
+        maybe that's okay since the initial condition is not stored here."""
+        for obstacle in current_obstacles:
+            self.remove_constraint(obstacle)
+
+        current_obstacles = environment.obstacles
+        for obstacle in current_obstacles:
+            self.add_constraint(obstacle, state)
+        self.initialize_constraints(state)
+        return current_obstacles
+
+    def initialize_constraints(self, initial_state: jnp.ndarray):
         for constraint in self.constraints:
-            constraint.initialize_constraint(self, initial_pos)
+            constraint.initialize_constraint(self, initial_state)
 
     def continuous_dynamics(self, state, control, t):
         """Returns the current state derivative"""
@@ -83,17 +95,17 @@ class ConstrainedDynamics(DynamicModel):
         )  # Anything that's not a constraint force, ie spring rates, viscous damping
         reaction_forces = self._calc_reaction_forces(state, explicit_forces)
         pos, vel = self.state2posvel(state)
-
-        return jnp.vstack(
+        dstate = jnp.hstack(
             (
-                vel,
-                self.inv_masses * (reaction_forces + explicit_forces),
+                vel.ravel(),
+                self.inv_masses * (reaction_forces.ravel() + explicit_forces.ravel()),
             )
         )
+        return dstate
 
-    def add_constraint(self, constraint: IConstraint):
+    def add_constraint(self, constraint: IConstraint, state):
         """Add a constraint"""
-        constraint.initialize_constraint(self)
+        constraint.initialize_constraint(self, state)
         self.constraints.append(constraint)
 
     def remove_constraint(self, constraint: IConstraint):
@@ -155,39 +167,55 @@ class ConstrainedDynamics(DynamicModel):
         """Calculate forces that are not caused by constraints or actuation."""
         raise NotImplementedError
 
+    # def _calc_reaction_forces(self, state, explicit_forces):
+    #     """Calculate the reaction forces from the constraints.
+
+    #     Args:
+    #         state: the current state of the system
+    #         explicit_forces: an nxd jnp.ndarray of vertex forces not caused by constraints
+
+    #     Returns:
+    #         An nxd array of reaction forces on the vertices."""
+    #     _, vel = self.state2posvel(state)
+
+    #     def no_constraints(_):
+    #         return jnp.zeros_like(explicit_forces)
+
+    #     def with_constraints(_):
+    #         constraints, jacobian, djacobian_dt = self._calculate_constraints(state)
+
+    #         front_matrix = jacobian @ (self.inv_masses[:, None] * jacobian)
+    #         dependent_array = -(
+    #             djacobian_dt @ vel
+    #             + jacobian @ (self.inv_masses * explicit_forces)
+    #             + self.constraint_damping_rate * jacobian @ vel
+    #             + self.constraint_spring_rate * constraints
+    #         )
+    #         lagrange_multipliers = jnp.linalg.solve(front_matrix, dependent_array)
+    #         return jacobian.T @ lagrange_multipliers
+
+    #     return jax.lax.cond(
+    #         len(self.constraints) == 0,
+    #         no_constraints,
+    #         with_constraints,
+    #         operand=None,
+    #     )
+
     def _calc_reaction_forces(self, state, explicit_forces):
-        """Calculate the reaction forces from the constraints.
-
-        Args:
-            state: the current state of the system
-            explicit_forces: an nxd jnp.ndarray of vertex forces not caused by constraints
-
-        Returns:
-            An nxd array of reaction forces on the vertices."""
-        _, vel = self.state2posvel(state)
-
-        def no_constraints(_):
+        if not self.constraints:
             return jnp.zeros_like(explicit_forces)
 
-        def with_constraints(_):
-            constraints, jacobian, djacobian_dt = self._calculate_constraints(state)
-
-            front_matrix = jacobian @ (self.inv_masses[:, None] * jacobian)
-            dependent_array = -(
-                djacobian_dt @ vel
-                + jacobian @ (self.inv_masses * explicit_forces)
-                + self.constraint_damping_rate * jacobian @ vel
-                + self.constraint_spring_rate * constraints
-            )
-            lagrange_multipliers = jnp.linalg.solve(front_matrix, dependent_array)
-            return jacobian.T @ lagrange_multipliers
-
-        return jax.lax.cond(
-            len(self.constraints) == 0,
-            no_constraints,
-            with_constraints,
-            operand=None,
+        pos, vel = self.state2posvel(state)
+        constraints, jacobian, djacobian_dt = self._calculate_constraints(state)
+        front_matrix = jacobian @ (self.inv_masses[None, :] * jacobian).T
+        dependent_array = -(
+            djacobian_dt @ vel.ravel()
+            + jacobian @ (self.inv_masses * explicit_forces.ravel())
+            + self.constraint_damping_rate * jacobian @ vel.ravel()
+            + self.constraint_spring_rate * constraints
         )
+        lagrange_multipliers = jnp.linalg.solve(front_matrix, dependent_array)
+        return jacobian.T @ lagrange_multipliers
 
     def _calculate_constraints(
         self, state
@@ -204,6 +232,9 @@ class ConstrainedDynamics(DynamicModel):
             # sometimes a constraint doesn't apply and returns no constraints
             if len(constraint) == 0:
                 continue
+
+            jacobian = jnp.reshape(jacobian, (len(constraint), -1))
+            djacobian_dt = jnp.reshape(djacobian_dt, (len(constraint), -1))
 
             constraints.extend(constraint)
             jacobians.append(jacobian)

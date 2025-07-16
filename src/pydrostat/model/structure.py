@@ -63,7 +63,6 @@ class Arm3D(ConstrainedDynamics):
     def __init__(
         self,
         cells: Cell3D,
-        initial_pos: jnp.ndarray,
         constraints=None,
     ):
         self.cells = cells
@@ -104,7 +103,6 @@ class Arm3D(ConstrainedDynamics):
         self.constraints = constraints if constraints is not None else []
 
         super().__init__(
-            initial_pos,
             num_controls,
             masses,
             constraints,
@@ -144,7 +142,7 @@ class Arm3D(ConstrainedDynamics):
 
         return edge_forces
 
-    def draw(self, state, control, idx):
+    def draw(self, state, control, sensor_data, idx):
         color = jnp.array([0.0, 0.0, 0.0])
         pos, _ = self.state2posvel(state)
 
@@ -162,7 +160,7 @@ class Arm3D(ConstrainedDynamics):
         # Draw vertices
         gl.glPointSize(10.0)
         gl.glBegin(gl.GL_POINTS)
-        scents = self.environment.sample_scent(pos)
+        scents = sensor_data.get("scent", jnp.zeros(len(pos)))
         max_scent = max(scents)
         for vertex, scent in zip(pos, scents):
             color = jnp.ones(3) * 1 - scent / max_scent
@@ -238,3 +236,7 @@ class CubicArmBuilder:
                     cube_faces + index_offset,
                 )
             )
+        self.velocities = jnp.zeros_like(self.positions)
+        self.states = jnp.hstack(
+            (self.positions.flatten(), self.velocities.flatten())
+        ).flatten()
